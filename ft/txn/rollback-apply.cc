@@ -76,7 +76,6 @@ int note_ft_used_in_txns_parent(const FT &ft, uint32_t UU(index), TOKUTXN const 
     toku_txn_maybe_note_ft(parent, ft);
     return 0;
 }
-int applied_cmd = 0;
 static int apply_txn(TOKUTXN txn, LSN lsn, apply_rollback_item func) {
     int r = 0;
     // do the commit/abort calls and free everything
@@ -108,7 +107,6 @@ static int apply_txn(TOKUTXN txn, LSN lsn, apply_rollback_item func) {
         last_sequence = log->sequence;
         if (func) {
             while ((item=log->newest_logentry)) {
-                applied_cmd ++;
                 log->newest_logentry = item->prev;
                 r = func(txn, item, lsn);
                 if (r!=0) return r;
