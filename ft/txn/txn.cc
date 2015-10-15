@@ -45,6 +45,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/txn/txn_manager.h"
 #include "util/status.h"
 
+
+
 void 
 toku_txn_get_status(TXN_STATUS s) {
     txn_status.init();
