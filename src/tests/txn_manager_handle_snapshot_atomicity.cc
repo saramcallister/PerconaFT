@@ -43,12 +43,46 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "test.h"
 #include <pthread.h>
 #include "ft/txn/txn.h"
+struct test_sync {
+    int state;
+    toku_mutex_t lock;
+    toku_cond_t cv;
+};
+
+static void test_sync_init(struct test_sync *sync) {
+    sync->state = 0;
+    toku_mutex_init(&sync->lock, NULL);
+    toku_cond_init(&sync->cv, NULL);
+}
+
+static void test_sync_destroy(struct test_sync *sync) {
+    toku_mutex_destroy(&sync->lock);
+    toku_cond_destroy(&sync->cv);
+}
+
+static void test_sync_sleep(struct test_sync *sync, int new_state) {
+    toku_mutex_lock(&sync->lock);
+    while (sync->state != new_state) {
+        toku_cond_wait(&sync->cv, &sync->lock);
+    }
+    toku_mutex_unlock(&sync->lock);
+}
+
+static void test_sync_next_state(struct test_sync *sync) {
+    toku_mutex_lock(&sync->lock);
+    sync->state++;
+    toku_cond_broadcast(&sync->cv);
+    toku_mutex_unlock(&sync->lock);
+}
+
+
 struct start_txn_arg {
     DB_ENV *env;
     DB *db;
     DB_TXN * parent;
 };
 
+static struct test_sync sync_s;
 static inline void toku_set_test_txn_sync_callback(void (* cb) (uint64_t, void *), void * extra) {
 	set_test_txn_sync_callback(cb, extra);
 }
@@ -57,24 +91,25 @@ static void test_callback(uint64_t self_tid, void * extra) {
     pthread_t **p = (pthread_t **) extra;
     pthread_t tid_1 = *p[0];
     pthread_t tid_2 = *p[1];
-    if(self_tid == tid_1) {
-	printf("the 1st thread[tid=%" PRIu64 "] is going to yield...\n", tid_1);
-	sched_yield();       
-        printf("the 1st thread is resuming...\n");
-    } else {
-	printf("the 2nd thread[tid=%" PRIu64 "] is going to proceed...\n", tid_2);
-    }
+    assert(self_tid == tid_2);
+    printf("%s: the thread[%" PRIu64 "] is going to wait...\n", __func__, tid_1);
+    test_sync_next_state(&sync_s);
+    sleep(5);
+    //test_sync_sleep(&sync_s,3);
+    //using test_sync_sleep/test_sync_next_state pair can sync threads better, however
+    //after the fix, this might cause a deadlock. just simply use sleep to do a proof-
+    //of-concept test. 
+    printf("%s: the thread[%" PRIu64 "] is resuming...\n", __func__, tid_1);
     return;
 }
 
-
-static void * start_txn(void * extra) {
-    sleep(2);
+static void * start_txn2(void * extra) {
     struct start_txn_arg * args = (struct start_txn_arg *) extra;
     DB_ENV * env = args -> env;
     DB * db = args->db;
     DB_TXN * parent = args->parent;
-    printf("starting txn [thread %" PRIu64 "]\n", pthread_self());
+    test_sync_sleep(&sync_s, 1);
+    printf("start %s [thread %" PRIu64 "]\n", __func__, pthread_self());
     DB_TXN *txn;
     int r = env->txn_begin(env, parent, &txn,  DB_READ_COMMITTED);
     assert(r == 0);
@@ -90,7 +125,36 @@ static void * start_txn(void * extra) {
    
     r = txn->commit(txn, 0);
     assert(r == 0);
-    printf("%s done[thread %" PRIu64 "]\n", __FUNCTION__, pthread_self());
+    printf("%s done[thread %" PRIu64 "]\n", __func__, pthread_self());
+    return extra;
+}
+
+static void * start_txn1(void * extra) {
+    struct start_txn_arg * args = (struct start_txn_arg *) extra;
+    DB_ENV * env = args -> env;
+    DB * db = args->db;
+    printf("start %s: [thread %" PRIu64 "]\n", __func__, pthread_self());
+    DB_TXN *txn;
+    int r = env->txn_begin(env, NULL, &txn,  DB_READ_COMMITTED);
+    assert(r == 0);
+    printf("%s: txn began by [thread %" PRIu64 "], will wait\n", __func__, pthread_self());
+    test_sync_next_state(&sync_s);
+    test_sync_sleep(&sync_s,2);
+    printf("%s: [thread %" PRIu64 "] resumed\n", __func__, pthread_self());
+    //do some random things...
+    DBT key, data;
+    dbt_init(&key, "hello", 6);
+    dbt_init(&data, "world", 6);
+    r = db->put(db, txn, &key, &data, 0);
+    assert(r == 0);
+   
+    r = db->get(db, txn, &key, &data, 0);
+    assert(r == 0);
+   
+    r = txn->commit(txn, 0);
+    assert(r == 0);
+    printf("%s: done[thread %" PRIu64 "]\n", __func__, pthread_self());
+    //test_sync_next_state(&sync_s);
     return extra;
 }
 
@@ -118,6 +182,9 @@ int test_main (int UU(argc), char * const UU(argv[])) {
     r = env->txn_begin(env, 0, &parent, DB_READ_COMMITTED);
     assert(r == 0);
 
+    ZERO_STRUCT(sync_s);
+    test_sync_init(&sync_s);
+
     pthread_t tid_1 = 0;
     pthread_t tid_2 = 0;
     pthread_t* callback_extra[2] = {&tid_1, &tid_2};
@@ -125,11 +192,10 @@ int test_main (int UU(argc), char * const UU(argv[])) {
 
     struct start_txn_arg args = {env, db, parent};
 
-    r = pthread_create(&tid_1, NULL, start_txn, &args);
+    r = pthread_create(&tid_1, NULL, start_txn1, &args);
     assert(r==0);
 
-
-    r= pthread_create(&tid_2, NULL, start_txn, &args);
+    r= pthread_create(&tid_2, NULL, start_txn2, &args);
     assert(r==0);
 
      void * ret; 
@@ -141,6 +207,7 @@ int test_main (int UU(argc), char * const UU(argv[])) {
     r = parent->commit(parent, 0);
     assert(r ==0);
 
+    test_sync_destroy(&sync_s);
     r = db->close(db, 0);
     assert(r == 0);
 
