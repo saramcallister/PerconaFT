@@ -54,6 +54,12 @@ if(BUILD_TESTING OR BUILD_SRC_TESTS)
   add_space_separated_property(TARGET test-5138.tdb COMPILE_FLAGS -fvisibility=hidden)
   add_ydb_test(test-5138.tdb)
 
+  list(REMOVE_ITEM tdb_bins txn_manager_handle_snapshot_atomicity.tdb)
+  add_executable(txn_manager_handle_snapshot_atomicity.tdb txn_manager_handle_snapshot_atomicity)
+  target_link_libraries(txn_manager_handle_snapshot_atomicity.tdb ${LIBTOKUDB}_static z ${LIBTOKUPORTABILITY}_static ${CMAKE_THREAD_LIBS_INIT} ft)
+  add_space_separated_property(TARGET txn_manager_handle_snapshot_atomicity.tdb COMPILE_FLAGS -fvisibility=hidden)
+  add_ydb_test(txn_manager_handle_snapshot_atomicity.tdb)
+
   foreach(bin ${tdb_bins})
     get_filename_component(base ${bin} NAME_WE)
 
