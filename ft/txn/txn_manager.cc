@@ -525,14 +525,17 @@ void toku_txn_manager_handle_snapshot_create_for_child_txn(
         XMALLOC(txn->live_root_txn_list);
         txn_manager_lock(txn_manager);
         txn_manager_create_snapshot_unlocked(txn_manager, txn);
-        txn_manager_unlock(txn_manager);
     }
     else {
         inherit_snapshot_from_parent(txn);
     }
-    if (copies_snapshot) {
-        setup_live_root_txn_list(&txn_manager->live_root_ids, txn->live_root_txn_list);  
-    }
+   
+    if (copies_snapshot) { 
+	if(!records_snapshot) 
+     	    txn_manager_lock(txn_manager);
+	setup_live_root_txn_list(&txn_manager->live_root_ids, txn->live_root_txn_list);  
+	txn_manager_unlock(txn_manager);
+    } 
 }
 
 void toku_txn_manager_handle_snapshot_destroy_for_child_txn(
