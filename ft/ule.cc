@@ -2041,31 +2041,49 @@ static int le_iterate_read_committed_callback(TXNID txnid, TOKUTXN txn, bool is_
     return TOKUDB_ACCEPT;
 }
 
+static int le_iterate_real_read_committed_callback(TXNID UU(txnid), TOKUTXN UU(txn), bool is_provisional UU()) {
+    //the first one is the topmost of committed
+    return TOKUDB_ACCEPT;
+}
+
+
 //
 // Returns true if the value that is to be read is empty.
 //
+
+
 int le_val_is_del(LEAFENTRY le, enum cursor_read_type read_type, TOKUTXN txn) {
-    int rval;
-    if (read_type == C_READ_SNAPSHOT || read_type == C_READ_COMMITTED) {
-        LE_ITERATE_CALLBACK f = (read_type == C_READ_SNAPSHOT) ?
-            toku_txn_reads_txnid :
-            le_iterate_read_committed_callback;
-        bool is_del = false;
-        le_iterate_is_del(
-            le,
-            f,
-            &is_del,
-            txn
-            );
-        rval = is_del;
-    }
-    else if (read_type == C_READ_ANY) {
-        rval = le_latest_is_del(le);
-    }
-    else {
-        invariant(false);
-    }
-    return rval;
+    bool is_del = false;
+    switch (read_type) {
+	case C_READ_SNAPSHOT: //this means for all the snapshot read including ISO_READ_COMMITTED
+	{
+	    LE_ITERATE_CALLBACK f = toku_txn_reads_txnid;
+	    le_iterate_is_del(le, f, &is_del, txn);
+        }
+	break;
+	
+	case C_READ_COMMITTED: //this is actually for READ_COMMITTED_ALWAYS
+	{
+	    LE_ITERATE_CALLBACK f = le_iterate_read_committed_callback;
+	    le_iterate_is_del(le, f, &is_del, txn);
+	}
+	break; 
+        
+	case C_READ_ANY:  //this is for READ_COMMITTED_ANY 
+	is_del = le_latest_is_del(le);
+	break;
+	
+	case C_REAL_READ_COMMITTED:  //this is the real read committed goes by the standard of MySQL
+	{
+	    LE_ITERATE_CALLBACK f = le_iterate_real_read_committed_callback;
+	    le_iterate_is_del(le, f, &is_del, txn);
+	}
+	break;
+	
+	default: 
+	assert(false);
+	}
+    return is_del;
 }
 
 //
@@ -2195,26 +2213,39 @@ void le_extract_val(LEAFENTRY le,
     if (is_leaf_mode) {
         *val = le;
         *vallen = leafentry_memsize(le);
-    } else if (read_type == C_READ_SNAPSHOT || read_type == C_READ_COMMITTED) {
-        LE_ITERATE_CALLBACK f = (read_type == C_READ_SNAPSHOT) ?
-            toku_txn_reads_txnid :
-            le_iterate_read_committed_callback;
-        int r = le_iterate_val(
-            le,
-            f,
-            val,
-            vallen,
-            ttxn
-            );
-        lazy_assert_zero(r);
-    } else if (read_type == C_READ_ANY){
-        *val = le_latest_val_and_len(le, vallen);
-    }
-    else {
-        assert(false);
-    }
-}
+    } else {
+	switch (read_type) {
+	    case C_READ_SNAPSHOT: //this means for all the snapshot read including ISO_READ_COMMITTED
+	    {		
+		LE_ITERATE_CALLBACK f = toku_txn_reads_txnid;
+		int r = le_iterate_val(le, f, val, vallen, ttxn);
+		lazy_assert_zero(r);
+	    }
+		break;
+	    case C_READ_COMMITTED: //this is actually for READ_COMMITTED_ALWAYS
+	    {
+		LE_ITERATE_CALLBACK f = le_iterate_read_committed_callback;
+		int r = le_iterate_val(le, f, val, vallen, ttxn);
+		lazy_assert_zero(r);
+	    }
+		break; 
+	    case C_READ_ANY:  //this is for READ_COMMITTED_ANY 
+		*val = le_latest_val_and_len(le, vallen);
+		break;
+	    case C_REAL_READ_COMMITTED:  //this is the real read committed goes by the standard of MySQL
+	    {
+		LE_ITERATE_CALLBACK f = le_iterate_real_read_committed_callback;
+		int r = le_iterate_val(le, f, val, vallen, ttxn);
+		lazy_assert_zero(r);
+	    }
+		break;
+	    default: 
+		assert(false);
+	}
 
+    }
+
+}
 // This is an on-disk format.  static_asserts verify everything is packed and aligned correctly.
 struct __attribute__ ((__packed__)) leafentry_13 {
     struct leafentry_committed_13 {

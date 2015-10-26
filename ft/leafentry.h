@@ -73,7 +73,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 enum cursor_read_type {
     C_READ_ANY = 0,
     C_READ_SNAPSHOT = 1,
-    C_READ_COMMITTED = 2
+    C_READ_COMMITTED = 2,
+    C_REAL_READ_COMMITTED = 3
 };
 
 //

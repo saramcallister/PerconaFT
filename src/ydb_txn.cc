@@ -462,6 +462,7 @@ int toku_txn_begin(DB_ENV *env, DB_TXN * stxn, DB_TXN ** txn, uint32_t flags) {
           iso_flags == DB_TXN_SNAPSHOT || 
           iso_flags == DB_READ_COMMITTED ||
           iso_flags == DB_READ_COMMITTED_ALWAYS ||
+          iso_flags == DB_REAL_READ_COMMITTED ||
           iso_flags == DB_READ_UNCOMMITTED || 
           iso_flags == DB_SERIALIZABLE || 
           iso_flags == DB_INHERIT_ISOLATION)
@@ -502,6 +503,9 @@ int toku_txn_begin(DB_ENV *env, DB_TXN * stxn, DB_TXN ** txn, uint32_t flags) {
             break;
         case (DB_SERIALIZABLE):
             child_isolation = TOKU_ISO_SERIALIZABLE;
+            break;
+        case (DB_REAL_READ_COMMITTED):
+            child_isolation = TOKU_ISO_REAL_READ_COMMITTED;
             break;
         case (0):
             child_isolation = stxn ? db_txn_struct_i(stxn)->iso : TOKU_ISO_SERIALIZABLE;

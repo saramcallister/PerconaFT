@@ -843,7 +843,9 @@ toku_db_cursor_internal(DB * db, DB_TXN * txn, DBC *c, uint32_t flags, int is_te
         }
         else if (dbc_struct_i(c)->iso == TOKU_ISO_READ_COMMITTED_ALWAYS) {
             read_type = C_READ_COMMITTED;
-        }
+        } else if(dbc_struct_i(c)->iso == TOKU_ISO_REAL_READ_COMMITTED) {
+	    read_type = C_REAL_READ_COMMITTED;
+	}
     }
     int r = toku_ft_cursor_create(
         db->i->ft_handle, 

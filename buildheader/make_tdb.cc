@@ -287,6 +287,7 @@ static void print_defines (void) {
         dodefine_from_track(txn_flags, DB_SERIALIZABLE);
         dodefine_from_track(txn_flags, DB_TXN_READ_ONLY);
         dodefine_from_track(txn_flags, DB_READ_COMMITTED_ALWAYS);
+        dodefine_from_track(txn_flags, DB_REAL_READ_COMMITTED);
     }
     
     /* PerconaFT specific error codes*/
