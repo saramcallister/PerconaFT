@@ -75,8 +75,11 @@ int test_main (int argc, char * const argv[]) {
     r = txna->commit(txna, 0);                                                      CKERR(r);
 
     r = db->cursor(db, txnb, &c, 0); assert(r == TOKUDB_MVCC_DICTIONARY_TOO_NEW);
+    #ifdef USE_REAL_READ_COMMITTED
+    r = db->cursor(db, txnc, &c, 0); assert(r == 0);
+    #else
     r = db->cursor(db, txnc, &c, 0); assert(r == TOKUDB_MVCC_DICTIONARY_TOO_NEW);
-
+    #endif
 
     r = txnb->commit(txnb, 0);                                                      CKERR(r);
     r = txnc->commit(txnc, 0);                                                      CKERR(r);

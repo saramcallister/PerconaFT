@@ -143,6 +143,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "-g3 -O0 ${CMAKE_CXX_FLAGS_DEBUG}")
 set(CMAKE_C_FLAGS_DRD "-g3 -O1 ${CMAKE_C_FLAGS_DRD}")
 set(CMAKE_CXX_FLAGS_DRD "-g3 -O1 ${CMAKE_CXX_FLAGS_DRD}")
 
+option(USE_REAL_READ_COMMITTED "Use the real read committed iso mode." OFF)
 ## set extra release flags
 ## need to set flags for RelWithDebInfo as well because we want the MySQL/MariaDB builds to use them
 if (CMAKE_CXX_COMPILER_ID STREQUAL Clang)
@@ -187,6 +188,10 @@ if (NOT CMAKE_CXX_COMPILER_ID STREQUAL Clang)
   # Disabling -Wcast-align with clang.  TODO: fix casting and re-enable it, someday.
   set_cflags_if_supported(-Wcast-align)
 endif ()
+
+if (USE_REAL_READ_COMMITTED)
+  set_cflags_if_supported(-DUSE_REAL_READ_COMMITTED)
+endif (USE_REAL_READ_COMMITTED) 
 
 ## always want these
 set(CMAKE_C_FLAGS "-Wall -Werror ${CMAKE_C_FLAGS}")
