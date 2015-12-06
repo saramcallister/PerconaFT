@@ -89,6 +89,10 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #define offset_t uint64_t
 enum rbtcolor {RED, BLACK};
 enum direction {LEFT,RIGHT};
+
+
+class rbtnode_mhs {
+public:
 struct blockpair {
     uint64_t offset;
     uint64_t size;
@@ -111,10 +115,6 @@ struct mhspair {
     }
 };
 
-
-
-class rbtnode_mhs {
-public:
 
     rbtcolor   color;
     struct blockpair hole;
@@ -172,7 +172,7 @@ private:
     void left_rotate(rbtnode_mhs * & root, rbtnode_mhs * x);
     void right_rotate(rbtnode_mhs * & root, rbtnode_mhs * y);
     
-    int insert(rbtnode_mhs * & root, struct blockpair pair);
+    int insert(rbtnode_mhs * & root, rbtnode_mhs::blockpair pair);
     int insert_fixup(rbtnode_mhs * & root, rbtnode_mhs * node);
     
     void raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node);
@@ -181,11 +181,11 @@ private:
                      parent);
 
     void destroy(rbtnode_mhs * & tree);
-    void dump(rbtnode_mhs * tree, struct blockpair pair, direction dir);
+    void dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair, direction dir);
     void recalculate_mhs(rbtnode_mhs * node);
-    void is_new_node_mergable(rbtnode_mhs *, rbtnode_mhs *, struct blockpair,
+    void is_new_node_mergable(rbtnode_mhs *, rbtnode_mhs *, rbtnode_mhs::blockpair,
                               bool *, bool *);
-    void absorb_new_node(rbtnode_mhs *, rbtnode_mhs *, struct blockpair, bool, bool,bool);    
+    void absorb_new_node(rbtnode_mhs *, rbtnode_mhs *, rbtnode_mhs::blockpair, bool, bool,bool);    
     rbtnode_mhs * search_first_fit_by_size_helper(rbtnode_mhs* x, uint64_t size) ;
 
     rbtnode_mhs * successor_helper(rbtnode_mhs *y, rbtnode_mhs *x) ;

@@ -311,7 +311,7 @@ void rbtree_mhs:: recalculate_mhs(rbtnode_mhs * node) {
 }
 
 void rbtree_mhs:: is_new_node_mergable(rbtnode_mhs * pred, rbtnode_mhs * succ,
-                                       struct blockpair pair,
+                                       rbtnode_mhs::blockpair pair,
                                        bool * left_merge, bool * right_merge) {
 
     if(pred) {
@@ -336,7 +336,7 @@ void rbtree_mhs:: is_new_node_mergable(rbtnode_mhs * pred, rbtnode_mhs * succ,
 }
 
 void rbtree_mhs:: absorb_new_node(rbtnode_mhs * pred,  rbtnode_mhs *succ,
-                                  struct blockpair pair, 
+                                  rbtnode_mhs::blockpair pair, 
                                   bool left_merge, bool right_merge, bool
                                   is_right_child) {
     assert(left_merge || right_merge);
@@ -383,7 +383,7 @@ void rbtree_mhs:: absorb_new_node(rbtnode_mhs * pred,  rbtnode_mhs *succ,
 //3. if only left-mergable or right-mergeable, just merge
 //4. non-mergable case. insert the node and run the fixup.
 
-int rbtree_mhs::insert(rbtnode_mhs * & root, struct blockpair pair) {
+int rbtree_mhs::insert(rbtnode_mhs * & root, rbtnode_mhs::blockpair pair) {
     rbtnode_mhs *x = m_root;
     rbtnode_mhs * y = NULL;
     bool left_merge = false;
@@ -412,7 +412,7 @@ int rbtree_mhs::insert(rbtnode_mhs * & root, struct blockpair pair) {
                 absorb_new_node(pred, succ, pair, left_merge, right_merge, false);
             } else {
             //construct the node
-              struct mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
+              rbtnode_mhs::mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
               node = new rbtnode_mhs(BLACK, pair, mhsp, nullptr, nullptr, nullptr);
               if(!node) 
                   return -1; 
@@ -431,7 +431,7 @@ int rbtree_mhs::insert(rbtnode_mhs * & root, struct blockpair pair) {
                 absorb_new_node(pred, succ, pair, left_merge, right_merge, true);
             } else {
              //construct the node
-              struct mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
+              rbtnode_mhs::mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
               node = new rbtnode_mhs(BLACK, pair, mhsp, nullptr, nullptr, nullptr);
               if(!node) 
                   return -1;
@@ -443,7 +443,7 @@ int rbtree_mhs::insert(rbtnode_mhs * & root, struct blockpair pair) {
         }
     }
     else {
-        struct mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
+        rbtnode_mhs::mhspair mhsp = {.left_mhs = 0, .right_mhs=0};
         node = new rbtnode_mhs(BLACK, pair, mhsp, nullptr, nullptr, nullptr);     
         if(!node) 
             return -1;
@@ -710,7 +710,7 @@ void rbtree_mhs::destroy()
 	destroy(m_root);
 }
 
-void rbtree_mhs::dump(rbtnode_mhs * tree, struct blockpair pair,
+void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
                        direction dir)
 {
 	if(tree != NULL)
