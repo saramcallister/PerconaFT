@@ -63,6 +63,7 @@ set(FT_SOURCES
   serialize/ft-serialize
   serialize/quicklz
   serialize/sub_block
+  serialize/rbtree_mhs
   txn/rollback
   txn/rollback-apply
   txn/rollback-ct-callbacks

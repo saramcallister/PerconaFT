@@ -60,12 +60,12 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 //        [(6,3)]  -> [(offset, size)], the hole
 //        [{2,5}]  -> [{mhs_of_left, mhs_of_right}], the label
-//       /       \
+/*        /     \           */
 // [(0, 1)]    [(10,  5)]
-// [{-1,2}]    [{-1, -1}]
-//       \
+// [{0, 2}]    [{0,   0}]
+/*        \                 */
 //       [(3,  2)]
-//       [{-1,-1}]
+//       [{0,  0}]
 //request of allocation size=2 goes from root to [(3,2)].
 
 //above example shows a simplified RBTree_max_holes. 
@@ -77,7 +77,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 //max_hole_sizes of the nodes along the path from the root to the node to be
 //deleted/inserted. The path can be cached and search is anyway O(log(n)).
 
-//unlike the typical rbtree, rbtree_mhs has to handles the inserts and deletes
+//unlike the typical rbtree, rbtree_mhs has to handle the inserts and deletes
 //with more care: an allocation that triggers the delete might leave some unused
 //space which we can simply update the start_addr and size without worrying
 //overlapping. An free might not only mean the insertion but also *merging* with
@@ -85,38 +85,36 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #ifndef _RED_BLACK_TREE_MHS_
 #define _RED_BLACK_TREE_MHS_
-enum rbtcolor {RED; BLACK};
-enum direction {LEFT;RIGHT};
+#include "ft/ft.h"
+#define offset_t uint64_t
+enum rbtcolor {RED, BLACK};
+enum direction {LEFT,RIGHT};
+struct blockpair {
+    uint64_t offset;
+    uint64_t size;
+    blockpair(uint64_t o, uint64_t s) :
+         offset(o), size(s) {
+    }
+    int operator<(const struct blockpair &rhs) const {
+        return offset < rhs.offset;
+    }
+    int operator<(const uint64_t &o) const {
+        return offset < o;
+    }
+};
+
+struct mhspair {
+    uint64_t left_mhs;
+    uint64_t right_mhs;
+    mhspair(uint64_t l, uint64_t r) :
+        left_mhs(l), right_mhs(r) {
+    }
+};
+
+
+
 class rbtnode_mhs {
 public:
-
-    struct blockpair {
-        uint64_t offset;
-        uint64_t size;
-        blockpair(uint64_t o, uint64_t s) :
-            offset(o), size(s) {
-        }
-        blockpair(struct blockpair p) :
-            offset(p.offset), size(p.size) {
-        }
-        int operator<(const struct blockpair &rhs) const {
-            return offset < rhs.offset;
-        }
-        int operator<(const uint64_t &o) const {
-            return offset < o;
-        }
-     };
-
-    struct mhspair {
-        uint64_t left_mhs;
-        uint64_t right_mhs;
-        mhspair(uint64_t l, uint64_t r) :
-            left_mhs(l), right_mhs(r) {
-        }
-        mhspair(struct mhspair p) :
-            left_mhs(p.left_mhs), right_mhs(p.right_mhs) {
-        }
-    };
 
     rbtcolor   color;
     struct blockpair hole;
@@ -124,9 +122,11 @@ public:
     rbtnode_mhs * left;
     rbtnode_mhs * right;
     rbtnode_mhs * parent;
+    
     rbtnode_mhs(rbtcolor c, struct blockpair h, struct mhspair lb, rbtnode_mhs * l,
                 rbtnode_mhs * r, rbtnode_mhs * p)
         :color(c), hole(h),label(lb),left(l),right(r),parent(p) {}
+    
 };
 
 class rbtree_mhs {
@@ -140,8 +140,8 @@ public:
     void in_order();
     void post_order();
     //immutable operations   
-    rbtnode_mhs * search_by_offset(offset_t addr);
-    rbtnode_mhs * search_first_fit_by_size(size_t size);
+    rbtnode_mhs * search_by_offset(uint64_t addr);
+    rbtnode_mhs * search_first_fit_by_size(uint64_t size);
         
     rbtnode_mhs * min_node();
     rbtnode_mhs * max_node();
@@ -152,11 +152,10 @@ public:
     //mapped from tree_allocator::free_block
     int insert(struct blockpair pair);
     //mapped from tree_allocator::alloc_block
-    int remove(size_t size);
+    uint64_t remove(size_t size);
     //mapped from tree_allocator::alloc_block_after
-    int remove_after(offset_t start, size_t size);
 
-    int destroy();
+    void destroy();
     //print the tree
     void dump();
 private:
@@ -170,29 +169,48 @@ private:
     rbtnode_mhs * max_node(rbtnode_mhs * node);
 
     //rotations to fix up. we will have to update the labels too.
-    void leftRotate(rbtnode * & root, rbtnode * x);
-    void rightRotate(rbtnode * & root, rbtnode* y);
+    void left_rotate(rbtnode_mhs * & root, rbtnode_mhs * x);
+    void right_rotate(rbtnode_mhs * & root, rbtnode_mhs * y);
     
     int insert(rbtnode_mhs * & root, struct blockpair pair);
     int insert_fixup(rbtnode_mhs * & root, rbtnode_mhs * node);
     
-    int remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size);
-    int remove_fixup(rbtnode_mhs * & root, rbtnode_mhs * node, rbtnode_mhs *
+    void raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node);
+    uint64_t remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size);
+    void raw_remove_fixup(rbtnode_mhs * & root, rbtnode_mhs * node, rbtnode_mhs *
                      parent);
 
-    int destroy(rbtnode * & tree);
-    void dump(rbtnode * tree, uint64_t addr, direction dir);
+    void destroy(rbtnode_mhs * & tree);
+    void dump(rbtnode_mhs * tree, struct blockpair pair, direction dir);
+    void recalculate_mhs(rbtnode_mhs * node);
+    void is_new_node_mergable(rbtnode_mhs *, rbtnode_mhs *, struct blockpair,
+                              bool *, bool *);
+    void absorb_new_node(rbtnode_mhs *, rbtnode_mhs *, struct blockpair, bool, bool,bool);    
+    rbtnode_mhs * search_first_fit_by_size_helper(rbtnode_mhs* x, uint64_t size) ;
 
-//simple macros.
-#define rb_parent(r)   ((r)->parent)
-#define rb_color(r) ((r)->color)
-#define rb_is_red(r)   ((r)->color==RED)
-#define rb_is_black(r)  ((r)->color==BLACK)
-#define rb_set_black(r)  do { (r)->color = BLACK; } while (0)
-#define rb_set_red(r)  do { (r)->color = RED; } while (0)
-#define rb_set_parent(r,p)  do { (r)->parent = (p); } while (0)
-#define rb_set_color(r,c)  do { (r)->color = (c); } while (0)
+    rbtnode_mhs * successor_helper(rbtnode_mhs *y, rbtnode_mhs *x) ;
 
-}
+    rbtnode_mhs * predecessor_helper(rbtnode_mhs *y, rbtnode_mhs * x);
+    //mixed with some macros.....
+#define rbn_parent(r)   ((r)->parent)
+#define rbn_color(r) ((r)->color)
+#define rbn_is_red(r)   ((r)->color==RED)
+#define rbn_is_black(r)  ((r)->color==BLACK)
+#define rbn_set_black(r)  do { (r)->color = BLACK; } while (0)
+#define rbn_set_red(r)  do { (r)->color = RED; } while (0)
+#define rbn_set_parent(r,p)  do { (r)->parent = (p); } while (0)
+#define rbn_set_color(r,c)  do { (r)->color = (c); } while (0)
+#define rbn_set_offset(r)  do { (r)->hole.offset = (c); } while (0)
+#define rbn_set_size(r,c)  do { (r)->hole.size = (c); } while (0)
+#define rbn_set_left_mhs(r,c)  do { (r)->label.left_mhs = (c); } while (0)
+#define rbn_set_right_mhs(r,c)  do { (r)->label.right_mhs = (c); } while (0)
+#define rbn_size(r)   ((r)->hole.size) 
+#define rbn_offset(r)   ((r)->hole.offset)
+#define rbn_key(r)   ((r)->hole.offset)
+#define rbn_left_mhs(r) ((r)->label.left_mhs)
+#define rbn_right_mhs(r) ((r)->label.right_mhs)
+#define mhs_of_subtree(y) (std::max( std::max(rbn_left_mhs(y),rbn_right_mhs(y)),rbn_size(y)))
+
+};
 
 #endif
