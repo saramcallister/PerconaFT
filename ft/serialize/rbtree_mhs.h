@@ -158,6 +158,12 @@ public:
     void destroy();
     //print the tree
     void dump();
+//validation
+    //balance
+    void validate_balance();
+    void validate_inorder(rbtnode_mhs::blockpair *);
+    void in_order_visitor(void( *f)(void *, rbtnode_mhs *, uint64_t), void *) ;
+
 private:
     void pre_order(rbtnode_mhs * node) const;
     void in_order(rbtnode_mhs * node) const;
@@ -191,6 +197,9 @@ private:
     rbtnode_mhs * successor_helper(rbtnode_mhs *y, rbtnode_mhs *x) ;
 
     rbtnode_mhs * predecessor_helper(rbtnode_mhs *y, rbtnode_mhs * x);
+
+    void in_order_visitor(rbtnode_mhs*, void (*f)(void *, rbtnode_mhs *,
+                                                  uint64_t), void *, uint64_t) ;
     //mixed with some macros.....
 #define rbn_parent(r)   ((r)->parent)
 #define rbn_color(r) ((r)->color)

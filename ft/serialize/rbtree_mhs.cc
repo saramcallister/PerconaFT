@@ -75,6 +75,24 @@ void rbtree_mhs::in_order(rbtnode_mhs* tree) const
 	  }
 }
 
+//yeah, i only care about in order visitor. -Jun
+void rbtree_mhs::in_order_visitor(rbtnode_mhs * tree, void(* f)(void*,
+                                                                rbtnode_mhs *,
+                                                                uint64_t),
+                                  void * extra, uint64_t depth) {
+    if(tree != NULL)
+	  {
+        in_order_visitor(tree->left, f, extra, depth+1);
+        f(extra, tree, depth);
+		    in_order_visitor(tree->right, f, extra, depth+1);
+	  }
+}
+
+void rbtree_mhs::in_order_visitor(void(* f)(void *, rbtnode_mhs *, uint64_t
+                                            ), void *  extra) {
+    in_order_visitor(m_root, f, extra, 0);
+}
+
 void rbtree_mhs::in_order() 
 {
 	  in_order(m_root);
@@ -691,45 +709,82 @@ void rbtree_mhs::raw_remove_fixup(rbtnode_mhs * & root, rbtnode_mhs * node, rbtn
 }
 
 
-void rbtree_mhs::destroy(rbtnode_mhs* &tree)
-{
-	if (tree==NULL)
-		return ;
+void rbtree_mhs::destroy(rbtnode_mhs* &tree)  {
+	  if (tree==NULL)
+		    return ;
 
-	if (tree->left != NULL)
-		return destroy(tree->left);
-	if (tree->right != NULL)
-		return destroy(tree->right);
+	  if (tree->left != NULL)
+		    return destroy(tree->left);
+	  if (tree->right != NULL)
+		    return destroy(tree->right);
 
-	delete tree;
-	tree=NULL;
+	  delete tree;
+	  tree=NULL;
 }
 
-void rbtree_mhs::destroy()
-{
-	destroy(m_root);
+void rbtree_mhs::destroy()  {
+	  destroy(m_root);
 }
 
 void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
                        direction dir)
 {
-	if(tree != NULL)
-	{
-		if(dir==0)
-			std::cout << std::setw(2) << tree->hole.offset << tree->hole.size << "(B) is root" <<  std::endl;
-		else			
-			std::cout << std::setw(2) << tree->hole.offset << tree->hole.size <<
-          (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) << pair.offset <<
-          "'s "  << std::setw(12) << (dir==RIGHT?"right child" : "left child")<<  std::endl;
+	  if(tree != NULL)  {
+		    if(dir==0)
+			      std::cout << std::setw(2) << tree->hole.offset << tree->hole.size << "(B) is root" <<  std::endl;
+		    else			
+			      std::cout << std::setw(2) << tree->hole.offset << tree->hole.size <<
+              (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) << pair.offset <<
+              "'s "  << std::setw(12) << (dir==RIGHT?"right child" : "left child")<<  std::endl;
 
-		dump(tree->left, tree->hole, LEFT);
-		dump(tree->right, tree->hole, RIGHT);
+		    dump(tree->left, tree->hole, LEFT);
+		    dump(tree->right, tree->hole, RIGHT);
 	}
 }
 
 
-void rbtree_mhs::dump()
-{
-	if (m_root != NULL)
-		dump(m_root, m_root->hole, (direction)0);
+void rbtree_mhs::dump() {
+	  if(m_root != NULL)
+		    dump(m_root, m_root->hole, (direction)0);
+}
+
+
+static void vis_bal_f(void *  extra, rbtnode_mhs * node, uint64_t depth) {
+    uint64_t ** p = (uint64_t **) extra;
+    uint64_t min = *p[0];
+    uint64_t max = *p[1];
+    if(!node->left && !node->right) {
+        if(min > depth) {
+            *p[0] = depth;
+        } else if (max < depth) {
+            *p[1] = depth;
+        }
+    }
+
+}
+
+void rbtree_mhs::validate_balance() {
+  uint64_t min_depth = 0xffffffffffffffff;
+  uint64_t max_depth = 0;
+  uint64_t* p[2] = {&min_depth, &max_depth};
+  in_order_visitor(vis_bal_f, (void *)p);
+  if(min_depth*2 < max_depth)
+      assert(0);
+}
+
+static void vis_cmp_f(void *  extra, rbtnode_mhs * node, uint64_t UU(depth)) {
+    rbtnode_mhs::blockpair ** p = (rbtnode_mhs::blockpair **) extra;
+
+    if(*p == NULL) 
+        assert(0);
+    if((*p)->offset != node->hole.offset) 
+        assert(0);
+
+    *p = *p + 1;
+
+}
+
+//validate the input pairs matches with sorted pairs
+void rbtree_mhs::validate_inorder(rbtnode_mhs::blockpair * pairs) {
+  in_order_visitor(vis_cmp_f, &pairs);
 }
