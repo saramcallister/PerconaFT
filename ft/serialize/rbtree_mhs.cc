@@ -532,6 +532,10 @@ int rbtree_mhs:: insert_fixup(rbtnode_mhs * & root, rbtnode_mhs * node) {
 }
 
 
+int rbtree_mhs::insert(rbtnode_mhs::blockpair pair) {
+    return  insert(m_root, pair);
+}
+  
 uint64_t rbtree_mhs::remove( size_t size){
     rbtnode_mhs * node = search_first_fit_by_size(size);
     return remove(m_root, node, size);
@@ -621,6 +625,10 @@ void rbtree_mhs::raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node) {
 
 }
 
+void rbtree_mhs::raw_remove(uint64_t offset) {
+    rbtnode_mhs * node =search_by_offset(offset);
+    raw_remove(m_root, node);
+}  
 uint64_t rbtree_mhs::remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size){
     uint64_t ret = rbn_offset(node);
     assert(rbn_size(node) >= size) ;

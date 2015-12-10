@@ -123,7 +123,7 @@ struct mhspair {
     rbtnode_mhs * right;
     rbtnode_mhs * parent;
     
-    rbtnode_mhs(rbtcolor c, struct blockpair h, struct mhspair lb, rbtnode_mhs * l,
+    rbtnode_mhs(rbtcolor c, rbtnode_mhs::blockpair h, struct mhspair lb, rbtnode_mhs * l,
                 rbtnode_mhs * r, rbtnode_mhs * p)
         :color(c), hole(h),label(lb),left(l),right(r),parent(p) {}
     
@@ -150,11 +150,12 @@ public:
     rbtnode_mhs * predecessor(rbtnode_mhs *);
 
     //mapped from tree_allocator::free_block
-    int insert(struct blockpair pair);
+    int insert(rbtnode_mhs::blockpair pair);
     //mapped from tree_allocator::alloc_block
     uint64_t remove(size_t size);
     //mapped from tree_allocator::alloc_block_after
 
+    void raw_remove(uint64_t offset);
     void destroy();
     //print the tree
     void dump();
