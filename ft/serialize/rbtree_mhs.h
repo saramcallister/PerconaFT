@@ -88,7 +88,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/ft.h"
 #define offset_t uint64_t
 enum rbtcolor {RED, BLACK};
-enum direction {LEFT,RIGHT};
+enum direction {LEFT=1,RIGHT};
 
 
 class rbtnode_mhs {

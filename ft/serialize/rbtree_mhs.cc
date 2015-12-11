@@ -609,11 +609,11 @@ void rbtree_mhs::raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node) {
 	  if (parent) {
 		    if (parent->left == node) {
 			      parent->left = child;
-            rbn_left_mhs(parent) = mhs_of_subtree(child);
+            rbn_left_mhs(parent) = child?mhs_of_subtree(child):0;
         }
 		    else {
 			      parent->right = child;
-            rbn_right_mhs(parent) = mhs_of_subtree(child);
+            rbn_right_mhs(parent) = child?mhs_of_subtree(child):0;
         }
         recalculate_mhs(parent);
 	  } else
@@ -739,9 +739,11 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 {
 	  if(tree != NULL)  {
 		    if(dir==0)
-			      std::cout << std::setw(2) << tree->hole.offset << tree->hole.size << "(B) is root" <<  std::endl;
+			      std::cout << std::setw(2) <<"("<< tree->hole.offset <<"," <<
+                tree->hole.size<<")" << "(B) is root" <<  std::endl;
 		    else			
-			      std::cout << std::setw(2) << tree->hole.offset << tree->hole.size <<
+			      std::cout << std::setw(2) <<"("<< tree->hole.offset <<","<<
+                tree->hole.size<<")" <<
               (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) << pair.offset <<
               "'s "  << std::setw(12) << (dir==RIGHT?"right child" : "left child")<<  std::endl;
 
