@@ -763,7 +763,7 @@ static void vis_bal_f(void *  extra, rbtnode_mhs * node, uint64_t depth) {
     uint64_t ** p = (uint64_t **) extra;
     uint64_t min = *p[0];
     uint64_t max = *p[1];
-    if(!node->left && !node->right) {
+    if(!node->left || !node->right) {
         if(min > depth) {
             *p[0] = depth;
         } else if (max < depth) {
@@ -778,7 +778,7 @@ void rbtree_mhs::validate_balance() {
   uint64_t max_depth = 0;
   uint64_t* p[2] = {&min_depth, &max_depth};
   in_order_visitor(vis_bal_f, (void *)p);
-  if(min_depth*2 < max_depth)
+  if((min_depth+1)*2 < max_depth+1)
       assert(0);
 }
 

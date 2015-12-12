@@ -96,6 +96,9 @@ public:
 struct blockpair {
     uint64_t offset;
     uint64_t size;
+    blockpair() :
+         offset(0), size(0) {
+    }
     blockpair(uint64_t o, uint64_t s) :
          offset(o), size(s) {
     }
