@@ -167,7 +167,7 @@ public:
     void validate_balance();
     void validate_inorder(rbtnode_mhs::blockpair *);
     void in_order_visitor(void( *f)(void *, rbtnode_mhs *, uint64_t), void *) ;
-
+    void validate_mhs();
 private:
     void pre_order(rbtnode_mhs * node) const;
     void in_order(rbtnode_mhs * node) const;
@@ -204,6 +204,7 @@ private:
 
     void in_order_visitor(rbtnode_mhs*, void (*f)(void *, rbtnode_mhs *,
                                                   uint64_t), void *, uint64_t) ;
+    uint64_t validate_mhs(rbtnode_mhs *);
     //mixed with some macros.....
 #define rbn_parent(r)   ((r)->parent)
 #define rbn_color(r) ((r)->color)

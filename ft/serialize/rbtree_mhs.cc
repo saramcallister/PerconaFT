@@ -798,3 +798,21 @@ static void vis_cmp_f(void *  extra, rbtnode_mhs * node, uint64_t UU(depth)) {
 void rbtree_mhs::validate_inorder(rbtnode_mhs::blockpair * pairs) {
   in_order_visitor(vis_cmp_f, &pairs);
 }
+
+uint64_t rbtree_mhs::validate_mhs(rbtnode_mhs * node) {
+  if(!node) return 0;
+  else {
+      uint64_t mhs_left = validate_mhs(node->left);
+      uint64_t mhs_right = validate_mhs(node->right);
+      assert(mhs_left == rbn_left_mhs(node));
+      assert(mhs_right == rbn_right_mhs(node));
+      return std::max(rbn_size(node),std::max(mhs_left, mhs_right));
+  }
+}
+
+void rbtree_mhs::validate_mhs() { 
+    uint64_t mhs_left = validate_mhs(m_root->left);
+    uint64_t mhs_right = validate_mhs(m_root->right);
+    assert(mhs_left == rbn_left_mhs(m_root));
+    assert(mhs_right == rbn_right_mhs(m_root));       
+}
