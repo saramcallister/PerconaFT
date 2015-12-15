@@ -77,6 +77,10 @@ static void test_insert_remove(void) {
 
     tree->validate_balance();
     tree->validate_mhs();
+
+    tree->insert({3,7});
+    tree->validate_balance();
+    tree->validate_mhs();
     tree->destroy();
 
 }
