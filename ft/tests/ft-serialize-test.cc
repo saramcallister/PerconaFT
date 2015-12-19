@@ -321,7 +321,7 @@ test_serialize_leaf_check_msn(enum ftnode_verify_type bft, bool do_clone) {
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -456,7 +456,8 @@ test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft, bool do_clone
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -584,7 +585,8 @@ test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft, bool do_clone) {
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -721,7 +723,8 @@ test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft, bool do_clone) 
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -849,7 +852,8 @@ test_serialize_leaf_with_empty_basement_nodes(enum ftnode_verify_type bft, bool 
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -948,7 +952,8 @@ test_serialize_leaf_with_multiple_empty_basement_nodes(enum ftnode_verify_type b
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);
@@ -1071,7 +1076,8 @@ test_serialize_nonleaf(enum ftnode_verify_type bft, bool do_clone) {
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     ft_h->cmp.destroy();
     toku_free(ft_h->h);

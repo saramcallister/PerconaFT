@@ -133,7 +133,7 @@ public:
     void blocknum_dump_translation(BLOCKNUM b);
     void dump_translation_table_pretty(FILE *f);
     void dump_translation_table(FILE *f);
-    void block_free(uint64_t offset);
+    void block_free(uint64_t offset, uint64_t size);
 
     int iterate(enum translation_type type, BLOCKTABLE_CALLBACK f, void *extra, bool data_only, bool used_only); 
     void internal_fragmentation(int64_t *total_sizep, int64_t *used_sizep);

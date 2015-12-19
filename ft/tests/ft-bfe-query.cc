@@ -397,7 +397,7 @@ test_prefetching(void) {
 
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,100);
     ft_h->blocktable.destroy();
     ft_h->cmp.destroy();
     toku_free(ft_h->h);

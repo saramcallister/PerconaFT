@@ -341,7 +341,7 @@ void block_table::note_end_checkpoint(int fd) {
             struct block_translation_pair *pair = &t->block_translation[i];
             if (pair->size > 0 && !_translation_prevents_freeing(&_inprogress, make_blocknum(i), pair)) {
                 assert(!_translation_prevents_freeing(&_current, make_blocknum(i), pair));
-                _bt_block_allocator.free_block(pair->u.diskoff);
+                _bt_block_allocator.free_block(pair->u.diskoff, pair->size);
             }
         }
         toku_free(_checkpointed.block_translation);
@@ -374,9 +374,9 @@ void block_table::_verify_valid_freeable_blocknum(struct translation *UU(t), BLO
 }
 
 // Also used only in ft-serialize-test.
-void block_table::block_free(uint64_t offset) {
+void block_table::block_free(uint64_t offset, uint64_t size) {
     _mutex_lock();
-    _bt_block_allocator.free_block(offset);
+    _bt_block_allocator.free_block(offset, size);
     _mutex_unlock();
 }
 
@@ -405,7 +405,7 @@ void block_table::_realloc_on_disk_internal(BLOCKNUM b, DISKOFF size, DISKOFF *o
         ((!for_checkpoint && _translation_prevents_freeing(&_inprogress,   b, &old_pair)) ||
          _translation_prevents_freeing(&_checkpointed, b, &old_pair));
     if (!cannot_free && old_pair.u.diskoff!=diskoff_unused) {
-        _bt_block_allocator.free_block(old_pair.u.diskoff);
+        _bt_block_allocator.free_block(old_pair.u.diskoff, old_pair.size);
     }
 
     uint64_t allocator_offset = diskoff_unused;
@@ -618,7 +618,7 @@ void block_table::_free_blocknum_unlocked(BLOCKNUM *bp, FT ft, bool for_checkpoi
             (_translation_prevents_freeing(&_inprogress,   b, &old_pair) ||
              _translation_prevents_freeing(&_checkpointed, b, &old_pair));
         if (!cannot_free) {
-            _bt_block_allocator.free_block(old_pair.u.diskoff);
+            _bt_block_allocator.free_block(old_pair.u.diskoff, old_pair.size);
         }
     }
     else {

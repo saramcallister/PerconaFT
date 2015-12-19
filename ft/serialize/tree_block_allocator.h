@@ -56,7 +56,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 // We can allocate blocks of a particular size at a particular location.
 // We can free blocks.
 // We can determine the size of a block.
-
+#define MAX_BYTE 0xffffffffffffffff
 class tree_block_allocator {
 public:
     static const size_t BLOCK_ALLOCATOR_ALIGNMENT = 4096;
@@ -125,7 +125,8 @@ public:
     // Requires: There must be a block currently allocated at that offset.
     // Parameters:
     //  offset (IN): The offset of the block.
-    void free_block(uint64_t offset);
+    // size(IN) : The size of the block
+    void free_block(uint64_t offset, uint64_t size);
 
     // Effect: Check to see if the block allocator is OK.  This may take a long time.
     // Usage Hints: Probably only use this for unit tests.
@@ -187,6 +188,4 @@ private:
     // These blocks are sorted by address.
 //    struct blockpair *_blocks_array;
     rbtree_mhs * _tree;
-
-    uint64_t _max_bytes;
 };

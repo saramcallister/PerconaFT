@@ -225,7 +225,8 @@ test_serialize_leaf(int valsize, int nelts, double entropy, int ser_runs, int de
 
     toku_ftnode_free(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     ft_h->cmp.destroy();
     toku_free(ft_h->h);
@@ -360,7 +361,8 @@ test_serialize_nonleaf(int valsize, int nelts, double entropy, int ser_runs, int
     toku_ftnode_free(&dn);
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     ft_h->cmp.destroy();

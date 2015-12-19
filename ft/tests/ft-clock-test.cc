@@ -333,7 +333,8 @@ test_serialize_nonleaf(void) {
     toku_destroy_ftnode_internals(&sn);
     toku_free(ndd);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     ft_h->cmp.destroy();
@@ -412,7 +413,8 @@ test_serialize_leaf(void) {
 
     toku_destroy_ftnode_internals(&sn);
 
-    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
+    ft_h->blocktable.block_free(block_allocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE,
+                                100);
     ft_h->blocktable.destroy();
     toku_free(ft_h->h);
     toku_free(ft_h);

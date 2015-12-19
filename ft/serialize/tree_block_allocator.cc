@@ -98,10 +98,9 @@ void tree_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint6
 }
 
 void tree_block_allocator::create(uint64_t reserve_at_beginning, uint64_t
-                                  alignment, uint64_t file_size_byte) {
+                                  alignment) {
     _create_internal(reserve_at_beginning, alignment);
-    _max_bytes = file_size_byte;
-    _tree->insert({reserve_at_beginning, max_bytes}); 
+    _tree->insert({reserve_at_beginning, MAX_BYTE}); 
     _trace_create();
 }
 
@@ -113,9 +112,8 @@ void tree_block_allocator::destroy() {
 
 void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning, uint64_t alignment,
                                              struct blockpair * translation_pairs, uint64_t
-                                             n_blocks, uint64_t file_size_byte) {
+                                             n_blocks) {
     _create_internal(reserve_at_beginning, alignment);
-    _max_bytes = file_size_byte;
     _n_blocks = n_blocks;
 
     struct blockpair * XMALLOC(n_blocks, pairs);
@@ -131,7 +129,7 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
         _n_bytes_in_use += size;
     
         uint64_t free_offset = 0;
-        uint64_t free_size = _max_bytes;
+        uint64_t free_size = MAX_BYTE;
     
         free_offset = pairs[i].offset+pairs[i].size;
         if(i < n_blocks -1 ){
@@ -143,7 +141,7 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
         _tree->insert(free_offset, free_size);
       
     }
-
+    toku_free(pairs);
     VALIDATE();
 
     _trace_create_from_blockpairs();
@@ -241,7 +239,7 @@ void tree_block_allocator::get_unused_statistics(TOKU_DB_FRAGMENTATION report) {
     report->unused_bytes = 0;
     report->unused_blocks = 0;
     report->largest_unused_block = 0;
-    in_order_visitor(vis_unused_collector, report);
+    _tree->in_order_visitor(vis_unused_collector, report);
 }
 
 void tree_block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
@@ -252,18 +250,34 @@ void tree_block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
     get_unused_statistics(report);
 }
 
+struct validate_extra {
+    uint64_t n_bytes;
+    rbtnode_mhs * pre_node ;
+};
+static void vis_used_blocks_in_order(void *extra, rbtnode_mhs * cur_node, uint64_t
+                                     UU(depth)) {
+    struct validate_extra * v_e = (struct validate_extra *) extra;
+    rbtnode_mhs * pre_node = v_e -> pre_node;
+    //verify no overlaps
+    if(pre_node) {
+        assert(rbn_size(pre_node) > 0);
+        assert(rbn_offset(cur_node) > rbn_offset(pre_node) +
+              rbn_size(pre_node));
+        uint64_t used_space = rbn_offset(cur_node) -
+            (rbn_offset(pre_node)+rbn_size(pre_node));       
+        v_e->n_bytes += used_space;
+    } 
+    v_e->pre_node = cur_node;
+}
 
 void tree_block_allocator::validate() const {
     _tree->validate_balance();
-    uint64_t n_bytes_in_use = _reserve_at_beginning;
-    for (uint64_t i = 0; i < _n_blocks; i++) {
-        n_bytes_in_use += _blocks_array[i].size;
-        if (i > 0) {
-            assert(_blocks_array[i].offset >  _blocks_array[i - 1].offset);
-            assert(_blocks_array[i].offset >= _blocks_array[i - 1].offset + _blocks_array[i - 1].size );
-        }
-    }
-    assert(n_bytes_in_use == _n_bytes_in_use);
+    struct validate_extra * XMALLOC(extra);
+    extra->n_bytes = 0;
+    extra->pre_node = NULL;
+    _tree->in_order_visitor(vis_used_blocks_in_order, extra);
+    assert(extra->n_bytes == _n_bytes_in_use);
+    toku_free(extra);
 }
 
 // Tracing
@@ -279,18 +293,28 @@ void tree_block_allocator::_trace_create(void) {
     }
 }
 
+static void vis_print_blocks(void * extra, rbtnode_mhs * cur_node, uint64_t
+                             UU(depth)) {
+   
+    rbtnode_mhs ** p_pre_node = (rbtnode_mhs **) extra;
+    if(*p_pre_node) {
+        uint64_t blk_offset = rbn_offset(*p_pre_node) + rbn_offset(*p_pre_node);
+        uint64_t blk_size = rbn_offset(cur_node) - blk_offset; 
+        fprintf(ba_trace_file, "[%" PRIu64 " %" PRIu64 "] ", blk_offset, blk_size);
+    }
+    *p_pre_node = cur_node;
+}
 void tree_block_allocator::_trace_create_from_blockpairs(void) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_create_from_blockpairs %p %" PRIu64 " %" PRIu64 " ",
                 this, _reserve_at_beginning, _alignment);
-        for (uint64_t i = 0; i < _n_blocks; i++) {
-            fprintf(ba_trace_file, "[%" PRIu64 " %" PRIu64 "] ",
-                    _blocks_array[i].offset, _blocks_array[i].size);
-        }
-        fprintf(ba_trace_file, "\n");
-        toku_mutex_unlock(&_trace_lock);
 
+        rbtnode_mhs * pre_node =NULL;
+        _tree->in_order_vistor(vis_print_blocks, &pre_node); 
+        fprintf(ba_trace_file, "\n");
+        
+        toku_mutex_unlock(&_trace_lock);
         fflush(ba_trace_file);
     }
 }
