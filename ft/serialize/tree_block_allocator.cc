@@ -56,7 +56,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 static FILE *ba_trace_file = nullptr;
 
-void block_allocator::maybe_initialize_trace(void) {
+void tree_block_allocator::maybe_initialize_trace(void) {
     const char *ba_trace_path = getenv("TOKU_BA_TRACE_PATH");        
     if (ba_trace_path != nullptr) {
         ba_trace_file = toku_os_fopen(ba_trace_path, "w");
@@ -70,7 +70,7 @@ void block_allocator::maybe_initialize_trace(void) {
     }
 }
 
-void block_allocator::maybe_close_trace() {
+void tree_block_allocator::maybe_close_trace() {
     if (ba_trace_file != nullptr) {
         int r = toku_os_fclose(ba_trace_file);
         if (r != 0) {
@@ -82,70 +82,66 @@ void block_allocator::maybe_close_trace() {
     }
 }
 
-void block_allocator::_create_internal(uint64_t reserve_at_beginning, uint64_t alignment) {
+void tree_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint64_t alignment) {
     // the alignment must be at least 512 and aligned with 512 to work with direct I/O
     assert(alignment >= 512 && (alignment % 512) == 0);
 
     _reserve_at_beginning = reserve_at_beginning;
     _alignment = alignment;
     _n_blocks = 0;
-    _blocks_array_size = 1;
-    XMALLOC_N(_blocks_array_size, _blocks_array);
     _n_bytes_in_use = reserve_at_beginning;
-    _strategy = BA_STRATEGY_FIRST_FIT;
-
+    _tree = new rbtree_mhs(alignment);
     memset(&_trace_lock, 0, sizeof(toku_mutex_t));
     toku_mutex_init(&_trace_lock, nullptr);
 
     VALIDATE();
 }
 
-void block_allocator::create(uint64_t reserve_at_beginning, uint64_t alignment) {
+void tree_block_allocator::create(uint64_t reserve_at_beginning, uint64_t
+                                  alignment, uint64_t file_size_byte) {
     _create_internal(reserve_at_beginning, alignment);
+    _max_bytes = file_size_byte;
+    _tree->insert({reserve_at_beginning, max_bytes}); 
     _trace_create();
 }
 
-void block_allocator::destroy() {
-    toku_free(_blocks_array);
+void tree_block_allocator::destroy() {
+    delete _tree;
     _trace_destroy();
     toku_mutex_destroy(&_trace_lock);
 }
 
-void block_allocator::set_strategy(enum allocation_strategy strategy) {
-    _strategy = strategy;
-}
-
-void block_allocator::grow_blocks_array_by(uint64_t n_to_add) {
-    if (_n_blocks + n_to_add > _blocks_array_size) {
-        uint64_t new_size = _n_blocks + n_to_add;
-        uint64_t at_least = _blocks_array_size * 2;
-        if (at_least > new_size) {
-            new_size = at_least;
-        }
-        _blocks_array_size = new_size;
-        XREALLOC_N(_blocks_array_size, _blocks_array);
-    }
-}
-
-void block_allocator::grow_blocks_array() {
-    grow_blocks_array_by(1);
-}
-
-void block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning, uint64_t alignment,
-                                             struct blockpair *pairs, uint64_t n_blocks) {
+void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning, uint64_t alignment,
+                                             struct blockpair * translation_pairs, uint64_t
+                                             n_blocks, uint64_t file_size_byte) {
     _create_internal(reserve_at_beginning, alignment);
-
+    _max_bytes = file_size_byte;
     _n_blocks = n_blocks;
-    grow_blocks_array_by(_n_blocks);
-    memcpy(_blocks_array, pairs, _n_blocks * sizeof(struct blockpair));
-    std::sort(_blocks_array, _blocks_array + _n_blocks);
+
+    struct blockpair * XMALLOC(n_blocks, pairs);
+    memcpy(pairs, translation_pairs, n_blocks * sizeof(struct blockpair));
+    std::sort(pairs, pairs + n_blocks); 
+    
     for (uint64_t i = 0; i < _n_blocks; i++) {
         // Allocator does not support size 0 blocks. See block_allocator_free_block.
-        invariant(_blocks_array[i].size > 0);
-        invariant(_blocks_array[i].offset >= _reserve_at_beginning);
-        invariant(_blocks_array[i].offset % _alignment == 0);
+        invariant(pairs[i].size > 0);
+        invariant(pairs[i].offset >= _reserve_at_beginning);
+        invariant(pairs[i].offset % _alignment == 0);
 
-        _n_bytes_in_use += _blocks_array[i].size;
+        _n_bytes_in_use += size;
+    
+        uint64_t free_offset = 0;
+        uint64_t free_size = _max_bytes;
+    
+        free_offset = pairs[i].offset+pairs[i].size;
+        if(i < n_blocks -1 ){
+            free_size = pairs[i+1].offset - (pairs[i].offset + pairs[i].size);
+            assert(free_size >= 0);
+            if(!free_size) 
+                continue;
+        }
+        _tree->insert(free_offset, free_size);
+      
     }
 
     VALIDATE();
@@ -158,102 +154,21 @@ static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
     return ((value + ba_alignment - 1) / ba_alignment) * ba_alignment;
 }
 
-struct block_allocator::blockpair *
-block_allocator::choose_block_to_alloc_after(size_t size, uint64_t heat) {
-    switch (_strategy) {
-    case BA_STRATEGY_FIRST_FIT:
-        return block_allocator_strategy::first_fit(_blocks_array, _n_blocks, size, _alignment);
-    case BA_STRATEGY_BEST_FIT:
-        return block_allocator_strategy::best_fit(_blocks_array, _n_blocks, size, _alignment);
-    case BA_STRATEGY_HEAT_ZONE:
-        return block_allocator_strategy::heat_zone(_blocks_array, _n_blocks, size, _alignment, heat);
-    case BA_STRATEGY_PADDED_FIT:
-        return block_allocator_strategy::padded_fit(_blocks_array, _n_blocks, size, _alignment);
-    default:
-        abort();
-    }
-}
 
 // Effect: Allocate a block. The resulting block must be aligned on the ba->alignment (which to make direct_io happy must be a positive multiple of 512).
-void block_allocator::alloc_block(uint64_t size, uint64_t heat, uint64_t *offset) {
+void tree_block_allocator::alloc_block(uint64_t size, uint64_t heat, uint64_t *offset) {
     struct blockpair *bp;
 
     // Allocator does not support size 0 blocks. See block_allocator_free_block.
     invariant(size > 0);
 
-    grow_blocks_array();
     _n_bytes_in_use += size;
+    *offset = _tree->remove(size);
 
-    uint64_t end_of_reserve = align(_reserve_at_beginning, _alignment);
-
-    if (_n_blocks == 0) {
-        // First and only block
-        assert(_n_bytes_in_use == _reserve_at_beginning + size); // we know exactly how many are in use
-        _blocks_array[0].offset = align(_reserve_at_beginning, _alignment);
-        _blocks_array[0].size = size;
-        *offset = _blocks_array[0].offset;
-        goto done;
-    } else if (end_of_reserve + size <= _blocks_array[0].offset ) {
-        // Check to see if the space immediately after the reserve is big enough to hold the new block.
-        bp = &_blocks_array[0];
-        memmove(bp + 1, bp, _n_blocks * sizeof(*bp));
-        bp[0].offset = end_of_reserve;
-        bp[0].size = size;
-        *offset = end_of_reserve;
-        goto done;
-    }
-
-    bp = choose_block_to_alloc_after(size, heat);
-    if (bp != nullptr) {
-        // our allocation strategy chose the space after `bp' to fit the new block
-        uint64_t answer_offset = align(bp->offset + bp->size, _alignment);
-        uint64_t blocknum = bp - _blocks_array;
-        invariant(&_blocks_array[blocknum] == bp);
-        invariant(blocknum < _n_blocks);
-        memmove(bp + 2, bp + 1, (_n_blocks - blocknum - 1) * sizeof(*bp));
-        bp[1].offset = answer_offset;
-        bp[1].size = size;
-        *offset = answer_offset;
-    } else {
-        // It didn't fit anywhere, so fit it on the end.
-        assert(_n_blocks < _blocks_array_size);
-        bp = &_blocks_array[_n_blocks];
-        uint64_t answer_offset = align(bp[-1].offset + bp[-1].size, _alignment);
-        bp->offset = answer_offset;
-        bp->size = size;
-        *offset = answer_offset;
-    }
-
-done:
     _n_blocks++;
     VALIDATE();
 
     _trace_alloc(size, heat, *offset);
-}
-
-// Find the index in the blocks array that has a particular offset.  Requires that the block exist.
-// Use binary search so it runs fast.
-int64_t block_allocator::find_block(uint64_t offset) {
-    VALIDATE();
-    if (_n_blocks == 1) {
-        assert(_blocks_array[0].offset == offset);
-        return 0;
-    }
-
-    uint64_t lo = 0;
-    uint64_t hi = _n_blocks;
-    while (1) {
-        assert(lo < hi); // otherwise no such block exists.
-        uint64_t mid = (lo + hi) / 2;
-        uint64_t thisoff = _blocks_array[mid].offset;
-        if (thisoff < offset) {
-            lo = mid + 1;
-        } else if (thisoff > offset) {
-            hi = mid;
-        } else {
-            return mid;
-        }
-    }
 }
 
 // To support 0-sized blocks, we need to include size as an input to this function.
@@ -261,125 +176,75 @@ int64_t block_allocator::find_block(uint64_t offset) {
 // a 0-sized block can share offset with a non-zero sized block.
 // The non-zero sized block is not exchangable with a zero sized block (or vice versa),
 // so inserting 0-sized blocks can cause corruption here.
-void block_allocator::free_block(uint64_t offset) {
+void tree_block_allocator::free_block(uint64_t offset, uint64_t size) {
     VALIDATE();
-    int64_t bn = find_block(offset);
-    assert(bn >= 0); // we require that there is a block with that offset.
-    _n_bytes_in_use -= _blocks_array[bn].size;
-    memmove(&_blocks_array[bn], &_blocks_array[bn + 1],
-            (_n_blocks - bn - 1) * sizeof(struct blockpair));
+    _n_bytes_in_use -= size;
+    _tree->insert({offset, size});
     _n_blocks--;
     VALIDATE();
     
     _trace_free(offset);
 }
 
-uint64_t block_allocator::block_size(uint64_t offset) {
-    int64_t bn = find_block(offset);
-    assert(bn >=0); // we require that there is a block with that offset.
-    return _blocks_array[bn].size;
-}
-
-uint64_t block_allocator::allocated_limit() const {
-    if (_n_blocks == 0) {
-        return _reserve_at_beginning;
-    } else {
-        struct blockpair *last = &_blocks_array[_n_blocks - 1];
-        return last->offset + last->size;
-    }
+uint64_t tree_block_allocator::allocated_limit() const {
+    rbtnode_mhs * max_node = _tree->max_node();
+    return rbn_offset(max_node);
 }
 
 // Effect: Consider the blocks in sorted order.  The reserved block at the beginning is number 0.  The next one is number 1 and so forth.
 // Return the offset and size of the block with that number.
 // Return 0 if there is a block that big, return nonzero if b is too big.
-int block_allocator::get_nth_block_in_layout_order(uint64_t b, uint64_t *offset, uint64_t *size) {
-    if (b ==0 ) {
+int tree_block_allocator::get_nth_block_in_layout_order(uint64_t b, uint64_t *offset, uint64_t *size) {
+    rbtnode_mhs * x, *y;
+    if(b == 0) {
         *offset = 0;
         *size = _reserve_at_beginning;
-        return  0;
-    } else if (b > _n_blocks) {
+        return 0;
+    } else if(b> _n_blocks){
         return -1;
     } else {
-        *offset =_blocks_array[b - 1].offset;
-        *size =_blocks_array[b - 1].size;
+        x = _tree->min_node();  
+        for(int i=1; i<= b; i++) {
+            y = x;
+            x = _tree->successor(x);
+        }
+        *size = x->offset - (y->offset + y-> size);
+        *offset = y->offset + y->size; 
         return 0;
     }
+
 }
 
+static void vis_unused_collector(void * extra, rbtnode_mhs *node, uint64_t
+                                 UU(depth)) {
+  
+    TOKU_DB_FRAGMENTATION report = (TOKU_DB_FRAGMENTATION) extra;
+    uint64_t offset = rbn_offset(node);
+    uint64_t size = rbn_size(node);
+    uint64_t answer_offset = align(offset, _alignment);
+    uint64_t free_space = offset + size - answer_offset;
+    if(free_space > 0) {
+        report->ununsed_bytes += free_space;
+        report->unused_blocks ++;
+        if (free_space > report->largest_unused_block) {
+                    report->largest_unused_block = free_space;
+        }
+         
+    }
+}
 // Requires: report->file_size_bytes is filled in
 // Requires: report->data_bytes is filled in
 // Requires: report->checkpoint_bytes_additional is filled in
-void block_allocator::get_unused_statistics(TOKU_DB_FRAGMENTATION report) {
+void tree_block_allocator::get_unused_statistics(TOKU_DB_FRAGMENTATION report) {
     assert(_n_bytes_in_use == report->data_bytes + report->checkpoint_bytes_additional);
 
     report->unused_bytes = 0;
     report->unused_blocks = 0;
     report->largest_unused_block = 0;
-    if (_n_blocks > 0) {
-        //Deal with space before block 0 and after reserve:
-        {
-            struct blockpair *bp = &_blocks_array[0];
-            assert(bp->offset >= align(_reserve_at_beginning, _alignment));
-            uint64_t free_space = bp->offset - align(_reserve_at_beginning, _alignment);
-            if (free_space > 0) {
-                report->unused_bytes += free_space;
-                report->unused_blocks++;
-                if (free_space > report->largest_unused_block) {
-                    report->largest_unused_block = free_space;
-                }
-            }
-        }
-
-        //Deal with space between blocks:
-        for (uint64_t blocknum = 0; blocknum +1 < _n_blocks; blocknum ++) {
-            // Consider the space after blocknum
-            struct blockpair *bp = &_blocks_array[blocknum];
-            uint64_t this_offset = bp[0].offset;
-            uint64_t this_size   = bp[0].size;
-            uint64_t end_of_this_block = align(this_offset+this_size, _alignment);
-            uint64_t next_offset = bp[1].offset;
-            uint64_t free_space  = next_offset - end_of_this_block;
-            if (free_space > 0) {
-                report->unused_bytes += free_space;
-                report->unused_blocks++;
-                if (free_space > report->largest_unused_block) {
-                    report->largest_unused_block = free_space;
-                }
-            }
-        }
-
-        //Deal with space after last block
-        {
-            struct blockpair *bp = &_blocks_array[_n_blocks-1];
-            uint64_t this_offset = bp[0].offset;
-            uint64_t this_size   = bp[0].size;
-            uint64_t end_of_this_block = align(this_offset+this_size, _alignment);
-            if (end_of_this_block < report->file_size_bytes) {
-                uint64_t free_space  = report->file_size_bytes - end_of_this_block;
-                assert(free_space > 0);
-                report->unused_bytes += free_space;
-                report->unused_blocks++;
-                if (free_space > report->largest_unused_block) {
-                    report->largest_unused_block = free_space;
-                }
-            }
-        }
-    } else {
-        // No blocks.  Just the reserve.
-        uint64_t end_of_this_block = align(_reserve_at_beginning, _alignment);
-        if (end_of_this_block < report->file_size_bytes) {
-            uint64_t free_space  = report->file_size_bytes - end_of_this_block;
-            assert(free_space > 0);
-            report->unused_bytes += free_space;
-            report->unused_blocks++;
-            if (free_space > report->largest_unused_block) {
-                report->largest_unused_block = free_space;
-            }
-        }
-    }
+    in_order_visitor(vis_unused_collector, report);
 }
 
-void block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
+void tree_block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
     report->data_bytes = _n_bytes_in_use; 
     report->data_blocks = _n_blocks; 
     report->file_size_bytes = 0;
@@ -387,7 +252,9 @@ void block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
     get_unused_statistics(report);
 }
 
-void block_allocator::validate() const {
+
+void tree_block_allocator::validate() const {
+    _tree->validate_balance();
     uint64_t n_bytes_in_use = _reserve_at_beginning;
     for (uint64_t i = 0; i < _n_blocks; i++) {
         n_bytes_in_use += _blocks_array[i].size;
@@ -401,7 +268,7 @@ void block_allocator::validate() const {
 
 // Tracing
 
-void block_allocator::_trace_create(void) {
+void tree_block_allocator::_trace_create(void) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_create %p %" PRIu64 " %" PRIu64 "\n",
@@ -412,7 +279,7 @@ void block_allocator::_trace_create(void) {
     }
 }
 
-void block_allocator::_trace_create_from_blockpairs(void) {
+void tree_block_allocator::_trace_create_from_blockpairs(void) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_create_from_blockpairs %p %" PRIu64 " %" PRIu64 " ",
@@ -428,7 +295,7 @@ void block_allocator::_trace_create_from_blockpairs(void) {
     }
 }
 
-void block_allocator::_trace_destroy(void) {
+void tree_block_allocator::_trace_destroy(void) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_destroy %p\n", this);
@@ -438,7 +305,7 @@ void block_allocator::_trace_destroy(void) {
     }
 }
 
-void block_allocator::_trace_alloc(uint64_t size, uint64_t heat, uint64_t offset) {
+void tree_block_allocator::_trace_alloc(uint64_t size, uint64_t heat, uint64_t offset) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_alloc %p %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
@@ -449,7 +316,7 @@ void block_allocator::_trace_alloc(uint64_t size, uint64_t heat, uint64_t offset
     }
 }
 
-void block_allocator::_trace_free(uint64_t offset) {
+void tree_block_allocator::_trace_free(uint64_t offset) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
         fprintf(ba_trace_file, "ba_trace_free %p %" PRIu64 "\n", this, offset);

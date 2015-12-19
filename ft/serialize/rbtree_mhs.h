@@ -135,6 +135,7 @@ struct mhspair {
 class rbtree_mhs {
 private:
     rbtnode_mhs * m_root;
+    uint64_t m_align;
 public:
     rbtree_mhs();
     ~rbtree_mhs();
@@ -205,6 +206,8 @@ private:
     void in_order_visitor(rbtnode_mhs*, void (*f)(void *, rbtnode_mhs *,
                                                   uint64_t), void *, uint64_t) ;
     uint64_t validate_mhs(rbtnode_mhs *);
+
+    uint64_t get_effective_size(rbtnode_mhs *);
     //mixed with some macros.....
 #define rbn_parent(r)   ((r)->parent)
 #define rbn_color(r) ((r)->color)
@@ -223,7 +226,7 @@ private:
 #define rbn_key(r)   ((r)->hole.offset)
 #define rbn_left_mhs(r) ((r)->label.left_mhs)
 #define rbn_right_mhs(r) ((r)->label.right_mhs)
-#define mhs_of_subtree(y) (std::max( std::max(rbn_left_mhs(y),rbn_right_mhs(y)),rbn_size(y)))
+#define mhs_of_subtree(y) (std::max( std::max(rbn_left_mhs(y),rbn_right_mhs(y)),get_effective_size(y)))
 
 };
 

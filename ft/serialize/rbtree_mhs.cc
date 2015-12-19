@@ -41,8 +41,13 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include <iostream>
 #include <iomanip>
 rbtree_mhs::rbtree_mhs():m_root(NULL)
+{ 
+   m_align = 1; //we do not align
+}
+
+rbtree_mhs::rbtree_mhs(uint64_t align):m_root(NULL)
 {
-	  m_root = NULL;
+	  m_align = align;
 }
 
 rbtree_mhs::~rbtree_mhs() 
@@ -80,12 +85,11 @@ void rbtree_mhs::in_order_visitor(rbtnode_mhs * tree, void(* f)(void*,
                                                                 rbtnode_mhs *,
                                                                 uint64_t),
                                   void * extra, uint64_t depth) {
-    if(tree != NULL)
-	  {
-        in_order_visitor(tree->left, f, extra, depth+1);
-        f(extra, tree, depth);
-		    in_order_visitor(tree->right, f, extra, depth+1);
-	  }
+   if(tree != NULL) {
+       in_order_visitor(tree->left, f, extra, depth+1);
+       f(extra, tree, depth);
+       in_order_visitor(tree->right, f, extra, depth+1);
+   }
 }
 
 void rbtree_mhs::in_order_visitor(void(* f)(void *, rbtnode_mhs *, uint64_t
@@ -128,7 +132,7 @@ rbtnode_mhs * rbtree_mhs::search_by_offset(uint64_t offset) {
 
 //mostly for testing
 rbtnode_mhs * rbtree_mhs::search_first_fit_by_size(uint64_t size) {
-    if(rbn_size(m_root) < size && rbn_left_mhs(m_root) < size &&
+    if(get_effective_size(m_root) < size && rbn_left_mhs(m_root) < size &&
        rbn_right_mhs(m_root) < size) {
         return nullptr;
     }     
@@ -140,7 +144,7 @@ rbtnode_mhs * rbtree_mhs::search_first_fit_by_size(uint64_t size) {
 
 rbtnode_mhs * rbtree_mhs::search_first_fit_by_size_helper(rbtnode_mhs* x, uint64_t size) {
 
-    if(rbn_size(x) >= size) {
+    if(get_effective_size(x) >= size) {
       //only possible to go left
       if(rbn_left_mhs(x) >= size) 
           return search_first_fit_by_size_helper(x->left, size);
@@ -445,7 +449,7 @@ int rbtree_mhs::insert(rbtnode_mhs * & root, rbtnode_mhs::blockpair pair) {
             pred = y;
             succ = successor_helper(y->parent, y);
             is_new_node_mergable(pred, succ, pair, &left_merge, &right_merge);
-            if(left_merge && right_merge) {
+            if(left_merge || right_merge) {
                 absorb_new_node(pred, succ, pair, left_merge, right_merge, true);
             } else {
              //construct the node
@@ -629,17 +633,34 @@ void rbtree_mhs::raw_remove(uint64_t offset) {
     rbtnode_mhs * node =search_by_offset(offset);
     raw_remove(m_root, node);
 }  
+
 uint64_t rbtree_mhs::remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size){
-    uint64_t ret = rbn_offset(node);
-    assert(rbn_size(node) >= size) ;
-        //just adjust
-    rbn_offset(node) += size;
-    rbn_size(node) -= size;
-    recalculate_mhs(node);
-    if(rbn_size(node) == 0) {
-      raw_remove(root, node);  
-    } 
-    return ret;
+    uint64_t n_offset = rbn_offset(node);
+    uint64_t n_size = rbn_size(node);
+    uint64_t answer_offset = align(rbn_offset(node), m_align);
+  
+    assert((answer_offset + size) <= (n_offset + n_size));
+    if(answer_offset == n_offset) {    
+        rbn_offset(node)+= size;
+        rbn_size(node) -= size;
+        recalculate_mhs(node); 
+        if(rbn_size(node) == 0) {
+            raw_remove(root, node);
+        }
+        
+    } else {
+        if(answer_offset+size == n_offset + n_size) {
+            rbn_size(node)-= size;
+            recalculate_mhs(node);
+        } else {
+        //well, cut in the middle...
+            rbn_size(node) = answer_offset - n_offset;
+            recalculate_mhs(node); 
+            insert(m_root, {(answer_offset+size), (n_offset + n_size)
+                   -(answer_offset+size)});
+        }
+    }
+    return answer_offset;
 }
 
 void rbtree_mhs::raw_remove_fixup(rbtnode_mhs * & root, rbtnode_mhs * node, rbtnode_mhs *
@@ -752,6 +773,17 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 	}
 }
 
+static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
+    return ((value + ba_alignment - 1) / ba_alignment) * ba_alignment;
+}
+
+void rbtree_mhs::get_effective_size(rbtnode_mhs * node) {
+    uint64_t offset = rbn_offset(node);
+    uint64_t size = rbn_size(node);
+    uint64_t end = offset + size;
+    uint64_t aligned_offset = align(offset, m_align);
+    return end - aligned_offset;
+}
 
 void rbtree_mhs::dump() {
 	  if(m_root != NULL)
@@ -806,7 +838,7 @@ uint64_t rbtree_mhs::validate_mhs(rbtnode_mhs * node) {
       uint64_t mhs_right = validate_mhs(node->right);
       assert(mhs_left == rbn_left_mhs(node));
       assert(mhs_right == rbn_right_mhs(node));
-      return std::max(rbn_size(node),std::max(mhs_left, mhs_right));
+      return std::max(get_effective_size(node),std::max(mhs_left, mhs_right));
   }
 }
 
@@ -816,3 +848,5 @@ void rbtree_mhs::validate_mhs() {
     assert(mhs_left == rbn_left_mhs(m_root));
     assert(mhs_right == rbn_right_mhs(m_root));       
 }
+
+

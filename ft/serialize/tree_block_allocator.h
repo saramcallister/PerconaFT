@@ -46,7 +46,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/serialize/rbtree_max_holes.h"
 //Tree Block allocator.
 //
-// A block allocator manages the allocation of variable-sized blocks.
+// A tree block allocator manages the allocation of variable-sized blocks.
 // The translation of block numbers to addresses is handled elsewhere.
 // The allocation of block numbers is handled elsewhere.
 //
@@ -54,7 +54,6 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 // block at the beginning that is preallocated (and cannot be allocated or freed)
 //
 // We can allocate blocks of a particular size at a particular location.
-// We can allocate blocks of a particular size at a location chosen by the allocator.
 // We can free blocks.
 // We can determine the size of a block.
 
@@ -95,8 +94,8 @@ public:
     //  alignment (IN)                   Block alignment.
     void create(uint64_t reserve_at_beginning, uint64_t alignment);
 
-    // Effect: Create a block allocator, in which the first RESERVE_AT_BEGINNING bytes are not put into a block.
-    //         The default allocation strategy is first fit (BA_STRATEGY_FIRST_FIT)
+    // Effect: Create a tree block allocator, in which the first RESERVE_AT_BEGINNING bytes are not put into a block.
+    //         The allocation strategy is first fit (BA_STRATEGY_FIRST_FIT)
     //         The allocator is initialized to contain `n_blocks' of blockpairs, taken from `pairs'
     //  All blocks be start on a multiple of ALIGNMENT.
     //  Aborts if we run out of memory.
@@ -108,7 +107,7 @@ public:
     void create_from_blockpairs(uint64_t reserve_at_beginning, uint64_t alignment,
                                 struct blockpair *pairs, uint64_t n_blocks);
 
-    // Effect: Destroy this block allocator
+    // Effect: Destroy the tree block allocator
     void destroy();
 
 
@@ -127,12 +126,6 @@ public:
     // Parameters:
     //  offset (IN): The offset of the block.
     void free_block(uint64_t offset);
-
-    // Effect: Return the size of the block that starts at offset.
-    // Requires: There must be a block currently allocated at that offset.
-    // Parameters:
-    //  offset (IN): The offset of the block.
-    uint64_t block_size(uint64_t offset);
 
     // Effect: Check to see if the block allocator is OK.  This may take a long time.
     // Usage Hints: Probably only use this for unit tests.
@@ -174,8 +167,6 @@ public:
 
 private:
     void _create_internal(uint64_t reserve_at_beginning, uint64_t alignment);
-    int64_t find_block(uint64_t offset);
-    struct blockpair *choose_block_to_alloc_after(size_t size, uint64_t heat);
 
     // Tracing
     toku_mutex_t _trace_lock;
@@ -191,7 +182,11 @@ private:
     uint64_t _alignment;
     // How many blocks
     uint64_t _n_blocks;
+    uint64_t _n_bytes_in_use;
+
     // These blocks are sorted by address.
 //    struct blockpair *_blocks_array;
-    rbtree_mhs _tree;
+    rbtree_mhs * _tree;
+
+    uint64_t _max_bytes;
 };
