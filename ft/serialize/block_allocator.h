@@ -57,7 +57,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 // We can allocate blocks of a particular size at a location chosen by the allocator.
 // We can free blocks.
 // We can determine the size of a block.
-
+// This class is the base abstract class that defines the interface for
+// block_table
 class block_allocator {
 public:
     static const size_t BLOCK_ALLOCATOR_ALIGNMENT = 4096;
@@ -136,11 +137,11 @@ public:
     // Effect: Check to see if the block allocator is OK.  This may take a long time.
     // Usage Hints: Probably only use this for unit tests.
     // TODO: Private?
-    virtual void validate() const;
+    virtual void validate() const = 0;
 
     // Effect: Return the unallocated block address of "infinite" size.
     //  That is, return the smallest address that is above all the allocated blocks.
-    virtual uint64_t allocated_limit() const;
+    virtual uint64_t allocated_limit() const = 0;
 
     // Effect: Consider the blocks in sorted order.  The reserved block at the beginning is number 0.  The next one is number 1 and so forth.
     //  Return the offset and size of the block with that number.

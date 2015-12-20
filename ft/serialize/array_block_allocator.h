@@ -43,7 +43,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "portability/toku_pthread.h"
 #include "portability/toku_stdint.h"
 #include "portability/toku_stdlib.h"
-
+#include "ft/serialize/block_allocator.h"
 // Array based block allocator.
 //
 // A block allocator manages the allocation of variable-sized blocks.

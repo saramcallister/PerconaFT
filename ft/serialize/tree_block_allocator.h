@@ -44,6 +44,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "portability/toku_stdint.h"
 #include "portability/toku_stdlib.h"
 #include "ft/serialize/rbtree_max_holes.h"
+#include "ft/serialize/block_allocator.h"
 //Tree Block allocator.
 //
 // A tree block allocator manages the allocation of variable-sized blocks.

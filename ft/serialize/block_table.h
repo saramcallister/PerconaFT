@@ -242,7 +242,7 @@ private:
     // There is no on-disk data structure for block allocation.
     // Note: This is *allocation* not *translation* - the block allocator is unaware of which
     //       blocks are used for which translation, but simply allocates and deallocates blocks.
-    block_allocator _bt_block_allocator;
+    block_allocator * _bt_block_allocator;
     toku_mutex_t _mutex;
     struct nb_mutex _safe_file_size_lock;
     bool _checkpoint_skipped;
