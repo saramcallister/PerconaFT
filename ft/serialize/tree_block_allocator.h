@@ -134,7 +134,7 @@ public:
     //  report->checkpoint_bytes_additional is ignored on return
     void get_statistics(TOKU_DB_FRAGMENTATION report);
 
-    static uint64_t get_alignment();	
+    void set_strategy(enum allocation_strategy strategy) ;
 private:
     void _create_internal(uint64_t reserve_at_beginning, uint64_t alignment);
 
@@ -149,7 +149,7 @@ private:
     // How much to reserve at the beginning
     uint64_t _reserve_at_beginning;
     // Block alignment
-    static uint64_t _alignment;
+    uint64_t _alignment;
     // How many blocks
     uint64_t _n_blocks;
     uint64_t _n_bytes_in_use;

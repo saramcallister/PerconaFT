@@ -49,9 +49,9 @@ static void ba_alloc(block_allocator *ba, uint64_t size, uint64_t *answer) {
     *answer = actual_answer/512;
 }
 
-static void ba_free(block_allocator *ba, uint64_t offset) {
+static void ba_free(block_allocator *ba, uint64_t offset, uint64_t size) {
     ba->validate();
-    ba->free_block(offset * 512);
+    ba->free_block(offset, 512*size);
     ba->validate();
 }
 
@@ -72,9 +72,9 @@ static void ba_check_none(block_allocator *ba, uint64_t blocknum_in_layout_order
 
 
 // Simple block allocator test
-static void test_ba0(block_allocator::allocation_strategy strategy) {
-    block_allocator allocator;
-    block_allocator *ba = &allocator;
+static void test_ba0(array_block_allocator::allocation_strategy strategy) {
+    array_block_allocator allocator;
+    array_block_allocator *ba = &allocator;
     ba->create(100*512, 1*512);
     ba->set_strategy(strategy);
     assert(ba->allocated_limit()==100*512);
@@ -86,22 +86,22 @@ static void test_ba0(block_allocator::allocation_strategy strategy) {
     ba_alloc(ba, 100, &b5);     
     ba_alloc(ba, 100, &b6);     
     ba_alloc(ba, 100, &b7);     
-    ba_free(ba, b2);
+    ba_free(ba, b2, 100);
     ba_alloc(ba, 100, &b2);  
-    ba_free(ba, b4);         
-    ba_free(ba, b6);         
+    ba_free(ba, b4, 100);         
+    ba_free(ba, b6, 100);         
     uint64_t b8, b9;
     ba_alloc(ba, 100, &b4);    
-    ba_free(ba, b2);           
+    ba_free(ba, b2, 100);           
     ba_alloc(ba, 100, &b6);    
     ba_alloc(ba, 100, &b8);    
     ba_alloc(ba, 100, &b9);    
-    ba_free(ba, b6);           
-    ba_free(ba, b7);           
-    ba_free(ba, b8);           
+    ba_free(ba, b6, 100);           
+    ba_free(ba, b7, 100);           
+    ba_free(ba, b8, 100);           
     ba_alloc(ba, 100, &b6);    
     ba_alloc(ba, 100, &b7);    
-    ba_free(ba, b4);           
+    ba_free(ba, b4, 100);           
     ba_alloc(ba, 100, &b4);    
 
     ba->destroy();
@@ -109,9 +109,9 @@ static void test_ba0(block_allocator::allocation_strategy strategy) {
 
 // Manually to get coverage of all the code in the block allocator.
 static void
-test_ba1(block_allocator::allocation_strategy strategy, int n_initial) {
-    block_allocator allocator;
-    block_allocator *ba = &allocator;
+test_ba1(array_block_allocator::allocation_strategy strategy, int n_initial) {
+    array_block_allocator allocator;
+    array_block_allocator *ba = &allocator;
     ba->create(0*512, 1*512);
     ba->set_strategy(strategy);
 
@@ -128,7 +128,7 @@ test_ba1(block_allocator::allocation_strategy strategy, int n_initial) {
 	    if (n_blocks > 0) {
 		int blocknum = random()%n_blocks;
 		//printf("F[%d]%ld\n", blocknum, blocks[blocknum]);
-		ba_free(ba, blocks[blocknum]);
+		ba_free(ba, blocks[blocknum], 1);
 		blocks[blocknum]=blocks[n_blocks-1];
 		n_blocks--;
 	    }
@@ -142,12 +142,12 @@ test_ba1(block_allocator::allocation_strategy strategy, int n_initial) {
 static void
 test_ba2 (void)
 {
-    block_allocator allocator;
-    block_allocator *ba = &allocator;
+    array_block_allocator allocator;
+    array_block_allocator *ba = &allocator;
     uint64_t b[6];
     enum { BSIZE = 1024 };
     ba->create(100*512, BSIZE*512);
-    ba->set_strategy(block_allocator::BA_STRATEGY_FIRST_FIT);
+    ba->set_strategy(array_block_allocator::BA_STRATEGY_FIRST_FIT);
     assert(ba->allocated_limit()==100*512);
 
     ba_check_l    (ba, 0, 0, 100);
@@ -183,7 +183,7 @@ test_ba2 (void)
     ba_check_l    (ba, 6, 7*BSIZE,       100);
     ba_check_none (ba, 7);
    
-    ba_free (ba, 4*BSIZE);
+    ba_free (ba, 4*BSIZE, 100);
     ba_check_l    (ba, 0, 0, 100);
     ba_check_l    (ba, 1,   BSIZE,       100);
     ba_check_l    (ba, 2, 2*BSIZE, BSIZE + 100);
@@ -204,8 +204,8 @@ test_ba2 (void)
     ba_check_l    (ba, 6, 7*BSIZE,       100);
     ba_check_none (ba, 7);
 
-    ba_free (ba,   BSIZE);
-    ba_free (ba, 5*BSIZE);
+    ba_free (ba,   BSIZE, 100);
+    ba_free (ba, 5*BSIZE, 100);
     ba_check_l    (ba, 0, 0, 100);
     ba_check_l    (ba, 1, 2*BSIZE, BSIZE + 100);
     ba_check_l    (ba, 2, 4*BSIZE,       100);
@@ -252,14 +252,14 @@ test_ba2 (void)
     ba_check_l    (ba, 9, 10*BSIZE,       100);
     ba_check_none (ba, 10);
     
-    ba_free(ba, 9*BSIZE);
-    ba_free(ba, 7*BSIZE);
+    ba_free(ba, 9*BSIZE, 100);
+    ba_free(ba, 7*BSIZE, 100);
     uint64_t b9;
     ba_alloc(ba, 100, &b9);
     assert(b9==7*BSIZE);
 
-    ba_free(ba, 5*BSIZE);
-    ba_free(ba, 2*BSIZE);
+    ba_free(ba, 5*BSIZE, 100);
+    ba_free(ba, 2*BSIZE, 100);
     uint64_t b10, b11;
     ba_alloc(ba, 100, &b10);
     assert(b10==2*BSIZE);
@@ -273,11 +273,11 @@ test_ba2 (void)
 
 int
 test_main (int argc __attribute__((__unused__)), const char *argv[] __attribute__((__unused__))) {
-    enum block_allocator::allocation_strategy strategies[] = {
-        block_allocator::BA_STRATEGY_FIRST_FIT,
-        block_allocator::BA_STRATEGY_BEST_FIT,
-        block_allocator::BA_STRATEGY_PADDED_FIT,
-        block_allocator::BA_STRATEGY_HEAT_ZONE,
+    enum array_block_allocator::allocation_strategy strategies[] = {
+        array_block_allocator::BA_STRATEGY_FIRST_FIT,
+        array_block_allocator::BA_STRATEGY_BEST_FIT,
+        array_block_allocator::BA_STRATEGY_PADDED_FIT,
+        array_block_allocator::BA_STRATEGY_HEAT_ZONE,
     };
     for (size_t i = 0; i < sizeof(strategies) / sizeof(strategies[0]); i++) {
         test_ba0(strategies[i]);

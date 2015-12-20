@@ -87,6 +87,13 @@ public:
         }
     };
 
+    enum allocation_strategy {
+        BA_STRATEGY_FIRST_FIT = 1,
+        BA_STRATEGY_BEST_FIT,
+        BA_STRATEGY_PADDED_FIT,
+        BA_STRATEGY_HEAT_ZONE
+    };
+
     // Effect: Create a block allocator, in which the first RESERVE_AT_BEGINNING bytes are not put into a block.
     //         The default allocation strategy is first fit (BA_STRATEGY_FIRST_FIT)
     //  All blocks be start on a multiple of ALIGNMENT.
@@ -111,6 +118,12 @@ public:
 
     // Effect: Destroy this block allocator
     virtual void destroy() = 0;
+
+    // Effect: Set the allocation strategy that the allocator should use
+    // Requires: No other threads are operating on this block allocator
+    virtual void set_strategy(enum allocation_strategy strategy);
+    virtual enum allocation_strategy  get_strategy(void);
+
 
     // Effect: Allocate a block of the specified size at an address chosen by the allocator.
     //  Aborts if anything goes wrong.
@@ -167,4 +180,9 @@ public:
     static void maybe_initialize_trace();
     static void maybe_close_trace();
     virtual ~block_allocator() {} ; 
+
+private:
+   // The allocation strategy are we using
+    enum allocation_strategy _strategy;
+
 };

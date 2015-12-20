@@ -49,6 +49,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include <portability/toku_path.h>
 
 #include "ft/serialize/block_allocator.h"
+#include "ft/serialize/tree_block_allocator.h"
+#include "ft/serialize/array_block_allocator.h"
 #include "ft/serialize/block_table.h"
 #include "ft/cachetable/cachetable.h"
 #include "ft/cachetable/cachetable-internal.h"

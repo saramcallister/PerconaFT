@@ -353,8 +353,11 @@ static void replay_canonicalized_trace(const vector<string> &canonicalized_trace
             const uint64_t alignment = parse_uint64(&ptr, line_num);
             ba_replay_assert(allocator_map.count(allocator_id) == 0,
                              "corrupted canonical trace: double create", line, line_num);
-
-            block_allocator *ba = new block_allocator();
+            #ifdef TREE_BLOCK_ALLOC
+            block_allocator *ba = new tree_block_allocator();
+            #else
+            block_allocator *ba = new array_block_allocator();
+            #endif
             if (fn == "ba_trace_create") {
                 ba->create(reserve_at_beginning, alignment);
                 stats->n_create++;

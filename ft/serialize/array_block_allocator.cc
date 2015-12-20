@@ -67,7 +67,7 @@ void array_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint
     _blocks_array_size = 1;
     XMALLOC_N(_blocks_array_size, _blocks_array);
     _n_bytes_in_use = reserve_at_beginning;
-    _strategy = BA_STRATEGY_FIRST_FIT;
+    set_strategy(BA_STRATEGY_FIRST_FIT);
 
     memset(&_trace_lock, 0, sizeof(toku_mutex_t));
     toku_mutex_init(&_trace_lock, nullptr);
@@ -86,9 +86,6 @@ void array_block_allocator::destroy() {
     toku_mutex_destroy(&_trace_lock);
 }
 
-void array_block_allocator::set_strategy(enum allocation_strategy strategy) {
-    _strategy = strategy;
-}
 
 void array_block_allocator::grow_blocks_array_by(uint64_t n_to_add) {
     if (_n_blocks + n_to_add > _blocks_array_size) {
@@ -135,7 +132,7 @@ static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
 
 struct block_allocator::blockpair *
 array_block_allocator::choose_block_to_alloc_after(size_t size, uint64_t heat) {
-    switch (_strategy) {
+    switch (get_strategy()) {
     case BA_STRATEGY_FIRST_FIT:
         return block_allocator_strategy::first_fit(_blocks_array, _n_blocks, size, _alignment);
     case BA_STRATEGY_BEST_FIT:

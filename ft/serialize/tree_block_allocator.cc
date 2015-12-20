@@ -68,7 +68,7 @@ void tree_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint6
     _tree = new rbtree_mhs(alignment);
     memset(&_trace_lock, 0, sizeof(toku_mutex_t));
     toku_mutex_init(&_trace_lock, nullptr);
-
+    set_strategy(BA_STRATEGY_FIRST_FIT);
     VALIDATE();
 }
 
@@ -85,6 +85,13 @@ void tree_block_allocator::destroy() {
     toku_mutex_destroy(&_trace_lock);
 }
 
+void tree_block_allocator::set_strategy(enum allocation_strategy strategy) {
+    if(strategy != BA_STRATEGY_FIRST_FIT) {
+        assert(0);
+    } else {
+      block_allocator::set_strategy(strategy);
+    }
+}
 void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning, uint64_t alignment,
                                              struct blockpair * translation_pairs, uint64_t
                                              n_blocks) {
@@ -187,17 +194,22 @@ int tree_block_allocator::get_nth_block_in_layout_order(uint64_t b, uint64_t *of
 
 }
 
-uint64_t tree_block_allocator:: get_alignment() {
-    return _alignment;
-}
+
+struct vis_unused_extra {
+    TOKU_DB_FRAGMENTATION report;
+    uint64_t align;
+};
 
 static void vis_unused_collector(void * extra, rbtnode_mhs *node, uint64_t
                                  UU(depth)) {
   
-    TOKU_DB_FRAGMENTATION report = (TOKU_DB_FRAGMENTATION) extra;
+    struct vis_unused_extra * v_e  = (struct vis_unused_extra *) extra;
+    TOKU_DB_FRAGMENTATION report = v_e->report;
+    uint64_t alignm = v_e -> align;
+
     uint64_t offset = rbn_offset(node);
     uint64_t size = rbn_size(node);
-    uint64_t answer_offset = align(offset, tree_block_allocator::get_alignment());
+    uint64_t answer_offset = align(offset, alignm);
     uint64_t free_space = offset + size - answer_offset;
     if(free_space > 0) {
         report->unused_bytes += free_space;
@@ -217,7 +229,8 @@ void tree_block_allocator::get_unused_statistics(TOKU_DB_FRAGMENTATION report) {
     report->unused_bytes = 0;
     report->unused_blocks = 0;
     report->largest_unused_block = 0;
-    _tree->in_order_visitor(vis_unused_collector, report);
+    struct vis_unused_extra extra = {report, _alignment};
+    _tree->in_order_visitor(vis_unused_collector, &extra);
 }
 
 void tree_block_allocator::get_statistics(TOKU_DB_FRAGMENTATION report) {
@@ -250,12 +263,9 @@ static void vis_used_blocks_in_order(void *extra, rbtnode_mhs * cur_node, uint64
 
 void tree_block_allocator::validate() const {
     _tree->validate_balance();
-    struct validate_extra * XMALLOC(extra);
-    extra->n_bytes = 0;
-    extra->pre_node = NULL;
-    _tree->in_order_visitor(vis_used_blocks_in_order, extra);
-    assert(extra->n_bytes == _n_bytes_in_use);
-    toku_free(extra);
+    struct validate_extra  extra = {0, nullptr};
+    _tree->in_order_visitor(vis_used_blocks_in_order, &extra);
+    assert(extra.n_bytes == _n_bytes_in_use);
 }
 
 // Tracing
