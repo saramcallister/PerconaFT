@@ -633,7 +633,9 @@ void rbtree_mhs::raw_remove(uint64_t offset) {
     rbtnode_mhs * node =search_by_offset(offset);
     raw_remove(m_root, node);
 }  
-
+static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
+    return ((value + ba_alignment - 1) / ba_alignment) * ba_alignment;
+}
 uint64_t rbtree_mhs::remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size){
     uint64_t n_offset = rbn_offset(node);
     uint64_t n_size = rbn_size(node);
@@ -773,11 +775,9 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 	}
 }
 
-static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
-    return ((value + ba_alignment - 1) / ba_alignment) * ba_alignment;
-}
 
-void rbtree_mhs::get_effective_size(rbtnode_mhs * node) {
+
+uint64_t rbtree_mhs::get_effective_size(rbtnode_mhs * node) {
     uint64_t offset = rbn_offset(node);
     uint64_t size = rbn_size(node);
     uint64_t end = offset + size;

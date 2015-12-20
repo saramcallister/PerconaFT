@@ -43,7 +43,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "portability/toku_pthread.h"
 #include "portability/toku_stdint.h"
 #include "portability/toku_stdlib.h"
-#include "ft/serialize/rbtree_max_holes.h"
+#include "ft/serialize/rbtree_mhs.h"
 #include "ft/serialize/block_allocator.h"
 //Tree Block allocator.
 //
@@ -134,14 +134,7 @@ public:
     //  report->checkpoint_bytes_additional is ignored on return
     void get_statistics(TOKU_DB_FRAGMENTATION report);
 
-    // Block allocator tracing.
-    // - Enabled by setting TOKU_BA_TRACE_PATH to the file that the trace file
-    //   should be written to.
-    // - Trace may be replayed by ba_trace_replay tool in tools/ directory
-    //   eg: "cat mytracefile | ba_trace_replay"
-    static void maybe_initialize_trace();
-    static void maybe_close_trace();
-
+    static uint64_t get_alignment();	
 private:
     void _create_internal(uint64_t reserve_at_beginning, uint64_t alignment);
 
@@ -156,7 +149,7 @@ private:
     // How much to reserve at the beginning
     uint64_t _reserve_at_beginning;
     // Block alignment
-    uint64_t _alignment;
+    static uint64_t _alignment;
     // How many blocks
     uint64_t _n_blocks;
     uint64_t _n_bytes_in_use;

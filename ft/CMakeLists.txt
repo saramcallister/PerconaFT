@@ -54,6 +54,9 @@ set(FT_SOURCES
   msg_buffer
   node
   pivotkeys
+  serialize/rbtree_mhs
+  serialize/tree_block_allocator
+  serialize/array_block_allocator
   serialize/block_allocator
   serialize/block_allocator_strategy
   serialize/block_table

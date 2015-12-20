@@ -51,7 +51,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/serialize/rbuf.h"
 #include "ft/serialize/wbuf.h"
 #include "ft/serialize/block_allocator.h"
-
+#include "ft/serialize/array_block_allocator.h"
+#include "ft/serialize/tree_block_allocator.h"
 #include "util/nb_mutex.h"
 #include "util/scoped_malloc.h"
 

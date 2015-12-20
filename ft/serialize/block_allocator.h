@@ -126,7 +126,7 @@ public:
     // Requires: There must be a block currently allocated at that offset.
     // Parameters:
     //  offset (IN): The offset of the block.
-    virtual void free_block(uint64_t offset) = 0;
+    virtual void free_block(uint64_t offset, uint64_t size) = 0;
 
     // Effect: Return the size of the block that starts at offset.
     // Requires: There must be a block currently allocated at that offset.
@@ -164,6 +164,7 @@ public:
     //  report->file_size is ignored on return
     //  report->checkpoint_bytes_additional is ignored on return
     virtual void get_statistics(TOKU_DB_FRAGMENTATION report) = 0;
-
-  
+    static void maybe_initialize_trace();
+    static void maybe_close_trace();
+    virtual ~block_allocator() {} ; 
 };

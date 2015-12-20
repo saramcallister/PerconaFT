@@ -55,33 +55,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #define VALIDATE()
 #endif
 
-static FILE *ba_trace_file = nullptr;
-
-void array_block_allocator::maybe_initialize_trace(void) {
-    const char *ba_trace_path = getenv("TOKU_BA_TRACE_PATH");        
-    if (ba_trace_path != nullptr) {
-        ba_trace_file = toku_os_fopen(ba_trace_path, "w");
-        if (ba_trace_file == nullptr) {
-            fprintf(stderr, "tokuft: error: block allocator trace path found in environment (%s), "
-                            "but it could not be opened for writing (errno %d)\n",
-                            ba_trace_path, get_maybe_error_errno());
-        } else {
-            fprintf(stderr, "tokuft: block allocator tracing enabled, path: %s\n", ba_trace_path);
-        }
-    }
-}
-
-void array_block_allocator::maybe_close_trace() {
-    if (ba_trace_file != nullptr) {
-        int r = toku_os_fclose(ba_trace_file);
-        if (r != 0) {
-            fprintf(stderr, "tokuft: error: block allocator trace file did not close properly (r %d, errno %d)\n",
-                            r, get_maybe_error_errno());
-        } else {
-            fprintf(stderr, "tokuft: block allocator tracing finished, file closed successfully\n");
-        }
-    }
-}
+extern FILE *ba_trace_file;
 
 void array_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint64_t alignment) {
     // the alignment must be at least 512 and aligned with 512 to work with direct I/O
@@ -262,7 +236,7 @@ int64_t array_block_allocator::find_block(uint64_t offset) {
 // a 0-sized block can share offset with a non-zero sized block.
 // The non-zero sized block is not exchangable with a zero sized block (or vice versa),
 // so inserting 0-sized blocks can cause corruption here.
-void array_block_allocator::free_block(uint64_t offset) {
+void array_block_allocator::free_block(uint64_t offset, uint64_t UU(size)) {
     VALIDATE();
     int64_t bn = find_block(offset);
     assert(bn >= 0); // we require that there is a block with that offset.

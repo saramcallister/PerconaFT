@@ -60,7 +60,15 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 class array_block_allocator: public block_allocator {
 public:
-    // Effect: Create a block allocator, in which the first RESERVE_AT_BEGINNING bytes are not put into a block.
+
+enum allocation_strategy {
+    BA_STRATEGY_FIRST_FIT = 1,
+    BA_STRATEGY_BEST_FIT,
+    BA_STRATEGY_PADDED_FIT,
+    BA_STRATEGY_HEAT_ZONE
+};
+
+ // Effect: Create a block allocator, in which the first RESERVE_AT_BEGINNING bytes are not put into a block.
     //         The default allocation strategy is first fit (BA_STRATEGY_FIRST_FIT)
     //  All blocks be start on a multiple of ALIGNMENT.
     //  Aborts if we run out of memory.
@@ -103,7 +111,7 @@ public:
     // Requires: There must be a block currently allocated at that offset.
     // Parameters:
     //  offset (IN): The offset of the block.
-    void free_block(uint64_t offset);
+    void free_block(uint64_t offset, uint64_t size);
 
     // Effect: Return the size of the block that starts at offset.
     // Requires: There must be a block currently allocated at that offset.
@@ -140,14 +148,6 @@ public:
     //  report->file_size is ignored on return
     //  report->checkpoint_bytes_additional is ignored on return
     void get_statistics(TOKU_DB_FRAGMENTATION report);
-
-    // Block allocator tracing.
-    // - Enabled by setting TOKU_BA_TRACE_PATH to the file that the trace file
-    //   should be written to.
-    // - Trace may be replayed by ba_trace_replay tool in tools/ directory
-    //   eg: "cat mytracefile | ba_trace_replay"
-    static void maybe_initialize_trace();
-    static void maybe_close_trace();
 
 private:
     void _create_internal(uint64_t reserve_at_beginning, uint64_t alignment);

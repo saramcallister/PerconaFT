@@ -47,6 +47,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #include "ft/serialize/block_allocator.h"
 #include "ft/serialize/block_allocator_strategy.h"
+#include "ft/serialize/tree_block_allocator.h"
 
 #if TOKU_DEBUG_PARANOID
 #define VALIDATE() validate()
@@ -54,33 +55,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #define VALIDATE()
 #endif
 
-static FILE *ba_trace_file = nullptr;
-
-void tree_block_allocator::maybe_initialize_trace(void) {
-    const char *ba_trace_path = getenv("TOKU_BA_TRACE_PATH");        
-    if (ba_trace_path != nullptr) {
-        ba_trace_file = toku_os_fopen(ba_trace_path, "w");
-        if (ba_trace_file == nullptr) {
-            fprintf(stderr, "tokuft: error: block allocator trace path found in environment (%s), "
-                            "but it could not be opened for writing (errno %d)\n",
-                            ba_trace_path, get_maybe_error_errno());
-        } else {
-            fprintf(stderr, "tokuft: block allocator tracing enabled, path: %s\n", ba_trace_path);
-        }
-    }
-}
-
-void tree_block_allocator::maybe_close_trace() {
-    if (ba_trace_file != nullptr) {
-        int r = toku_os_fclose(ba_trace_file);
-        if (r != 0) {
-            fprintf(stderr, "tokuft: error: block allocator trace file did not close properly (r %d, errno %d)\n",
-                            r, get_maybe_error_errno());
-        } else {
-            fprintf(stderr, "tokuft: block allocator tracing finished, file closed successfully\n");
-        }
-    }
-}
+extern FILE *ba_trace_file;
 
 void tree_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint64_t alignment) {
     // the alignment must be at least 512 and aligned with 512 to work with direct I/O
@@ -116,7 +91,7 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
     _create_internal(reserve_at_beginning, alignment);
     _n_blocks = n_blocks;
 
-    struct blockpair * XMALLOC(n_blocks, pairs);
+    struct blockpair * XMALLOC_N(n_blocks, pairs);
     memcpy(pairs, translation_pairs, n_blocks * sizeof(struct blockpair));
     std::sort(pairs, pairs + n_blocks); 
     
@@ -126,19 +101,19 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
         invariant(pairs[i].offset >= _reserve_at_beginning);
         invariant(pairs[i].offset % _alignment == 0);
 
-        _n_bytes_in_use += size;
+        _n_bytes_in_use += pairs[i].size;
     
         uint64_t free_offset = 0;
         uint64_t free_size = MAX_BYTE;
     
         free_offset = pairs[i].offset+pairs[i].size;
         if(i < n_blocks -1 ){
+            assert(pairs[i+1].offset >= (pairs[i].offset+pairs[i].size));
             free_size = pairs[i+1].offset - (pairs[i].offset + pairs[i].size);
-            assert(free_size >= 0);
             if(!free_size) 
                 continue;
         }
-        _tree->insert(free_offset, free_size);
+        _tree->insert({free_offset, free_size});
       
     }
     toku_free(pairs);
@@ -155,7 +130,6 @@ static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
 
 // Effect: Allocate a block. The resulting block must be aligned on the ba->alignment (which to make direct_io happy must be a positive multiple of 512).
 void tree_block_allocator::alloc_block(uint64_t size, uint64_t heat, uint64_t *offset) {
-    struct blockpair *bp;
 
     // Allocator does not support size 0 blocks. See block_allocator_free_block.
     invariant(size > 0);
@@ -202,15 +176,19 @@ int tree_block_allocator::get_nth_block_in_layout_order(uint64_t b, uint64_t *of
         return -1;
     } else {
         x = _tree->min_node();  
-        for(int i=1; i<= b; i++) {
+        for(uint64_t i=1; i<= b; i++) {
             y = x;
             x = _tree->successor(x);
         }
-        *size = x->offset - (y->offset + y-> size);
-        *offset = y->offset + y->size; 
+        *size = rbn_offset(x) - (rbn_offset(y) + rbn_size(y));
+        *offset = rbn_offset(y) + rbn_size(y); 
         return 0;
     }
 
+}
+
+uint64_t tree_block_allocator:: get_alignment() {
+    return _alignment;
 }
 
 static void vis_unused_collector(void * extra, rbtnode_mhs *node, uint64_t
@@ -219,10 +197,10 @@ static void vis_unused_collector(void * extra, rbtnode_mhs *node, uint64_t
     TOKU_DB_FRAGMENTATION report = (TOKU_DB_FRAGMENTATION) extra;
     uint64_t offset = rbn_offset(node);
     uint64_t size = rbn_size(node);
-    uint64_t answer_offset = align(offset, _alignment);
+    uint64_t answer_offset = align(offset, tree_block_allocator::get_alignment());
     uint64_t free_space = offset + size - answer_offset;
     if(free_space > 0) {
-        report->ununsed_bytes += free_space;
+        report->unused_bytes += free_space;
         report->unused_blocks ++;
         if (free_space > report->largest_unused_block) {
                     report->largest_unused_block = free_space;
@@ -311,7 +289,7 @@ void tree_block_allocator::_trace_create_from_blockpairs(void) {
                 this, _reserve_at_beginning, _alignment);
 
         rbtnode_mhs * pre_node =NULL;
-        _tree->in_order_vistor(vis_print_blocks, &pre_node); 
+        _tree->in_order_visitor(vis_print_blocks, &pre_node); 
         fprintf(ba_trace_file, "\n");
         
         toku_mutex_unlock(&_trace_lock);

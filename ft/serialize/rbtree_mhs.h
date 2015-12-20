@@ -138,6 +138,7 @@ private:
     uint64_t m_align;
 public:
     rbtree_mhs();
+    rbtree_mhs(uint64_t);
     ~rbtree_mhs();
         
     void pre_order();
