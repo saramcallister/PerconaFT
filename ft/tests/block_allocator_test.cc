@@ -51,7 +51,7 @@ static void ba_alloc(block_allocator *ba, uint64_t size, uint64_t *answer) {
 
 static void ba_free(block_allocator *ba, uint64_t offset, uint64_t size) {
     ba->validate();
-    ba->free_block(offset, 512*size);
+    ba->free_block(offset*512, 512*size);
     ba->validate();
 }
 

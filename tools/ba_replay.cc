@@ -57,7 +57,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include <portability/toku_stdlib.h>
 
 #include "ft/serialize/block_allocator.h"
-
+#include "ft/serialize/array_block_allocator.h"
+#include "ft/serialize/tree_block_allocator.h"
 using std::map;
 using std::set;
 using std::string;
