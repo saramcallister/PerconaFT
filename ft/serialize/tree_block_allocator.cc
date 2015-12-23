@@ -69,13 +69,13 @@ void tree_block_allocator::_create_internal(uint64_t reserve_at_beginning, uint6
     memset(&_trace_lock, 0, sizeof(toku_mutex_t));
     toku_mutex_init(&_trace_lock, nullptr);
     set_strategy(BA_STRATEGY_FIRST_FIT);
-    VALIDATE();
 }
 
 void tree_block_allocator::create(uint64_t reserve_at_beginning, uint64_t
                                   alignment) {
     _create_internal(reserve_at_beginning, alignment);
     _tree->insert({reserve_at_beginning, MAX_BYTE}); 
+    VALIDATE();
     _trace_create();
 }
 
@@ -167,7 +167,7 @@ void tree_block_allocator::free_block(uint64_t offset, uint64_t size) {
 
 uint64_t tree_block_allocator::allocated_limit() const {
     rbtnode_mhs * max_node = _tree->max_node();
-    return rbn_offset(max_node);
+    return rbn_offset(max_node).to_int();
 }
 
 // Effect: Consider the blocks in sorted order.  The reserved block at the beginning is number 0.  The next one is number 1 and so forth.
@@ -187,8 +187,8 @@ int tree_block_allocator::get_nth_block_in_layout_order(uint64_t b, uint64_t *of
             y = x;
             x = _tree->successor(x);
         }
-        *size = rbn_offset(x) - (rbn_offset(y) + rbn_size(y));
-        *offset = rbn_offset(y) + rbn_size(y); 
+        *size = (rbn_offset(x) - (rbn_offset(y) + rbn_size(y))).to_int();
+        *offset = (rbn_offset(y) + rbn_size(y)).to_int(); 
         return 0;
     }
 
@@ -207,10 +207,10 @@ static void vis_unused_collector(void * extra, rbtnode_mhs *node, uint64_t
     TOKU_DB_FRAGMENTATION report = v_e->report;
     uint64_t alignm = v_e -> align;
 
-    uint64_t offset = rbn_offset(node);
-    uint64_t size = rbn_size(node);
-    uint64_t answer_offset = align(offset, alignm);
-    uint64_t free_space = offset + size - answer_offset;
+    mhs_uint64_t offset = rbn_offset(node);
+    mhs_uint64_t size = rbn_size(node);
+    mhs_uint64_t answer_offset(align(offset.to_int(), alignm));
+    uint64_t free_space = (offset + size - answer_offset).to_int();
     if(free_space > 0) {
         report->unused_bytes += free_space;
         report->unused_blocks ++;
@@ -254,15 +254,18 @@ static void vis_used_blocks_in_order(void *extra, rbtnode_mhs * cur_node, uint64
         assert(rbn_size(pre_node) > 0);
         assert(rbn_offset(cur_node) > rbn_offset(pre_node) +
               rbn_size(pre_node));
-        uint64_t used_space = rbn_offset(cur_node) -
+        mhs_uint64_t used_space = rbn_offset(cur_node) -
             (rbn_offset(pre_node)+rbn_size(pre_node));       
-        v_e->n_bytes += used_space;
+        v_e->n_bytes += used_space.to_int();
+    } else {
+        v_e->n_bytes += rbn_offset(cur_node).to_int();
     } 
     v_e->pre_node = cur_node;
 }
 
 void tree_block_allocator::validate() const {
     _tree->validate_balance();
+    _tree->validate_mhs();
     struct validate_extra  extra = {0, nullptr};
     _tree->in_order_visitor(vis_used_blocks_in_order, &extra);
     assert(extra.n_bytes == _n_bytes_in_use);
@@ -286,9 +289,10 @@ static void vis_print_blocks(void * extra, rbtnode_mhs * cur_node, uint64_t
    
     rbtnode_mhs ** p_pre_node = (rbtnode_mhs **) extra;
     if(*p_pre_node) {
-        uint64_t blk_offset = rbn_offset(*p_pre_node) + rbn_offset(*p_pre_node);
-        uint64_t blk_size = rbn_offset(cur_node) - blk_offset; 
-        fprintf(ba_trace_file, "[%" PRIu64 " %" PRIu64 "] ", blk_offset, blk_size);
+        mhs_uint64_t blk_offset = rbn_offset(*p_pre_node) + rbn_offset(*p_pre_node);
+        mhs_uint64_t blk_size = rbn_offset(cur_node) - blk_offset; 
+        fprintf(ba_trace_file, "[%" PRIu64 " %" PRIu64 "] ",
+                blk_offset.to_int(), blk_size.to_int());
     }
     *p_pre_node = cur_node;
 }

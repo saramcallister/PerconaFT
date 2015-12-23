@@ -141,13 +141,7 @@ public:
     //  offset (IN): The offset of the block.
     virtual void free_block(uint64_t offset, uint64_t size) = 0;
 
-    // Effect: Return the size of the block that starts at offset.
-    // Requires: There must be a block currently allocated at that offset.
-    // Parameters:
-    //  offset (IN): The offset of the block.
-    virtual uint64_t block_size(uint64_t offset) = 0;
-
-    // Effect: Check to see if the block allocator is OK.  This may take a long time.
+   // Effect: Check to see if the block allocator is OK.  This may take a long time.
     // Usage Hints: Probably only use this for unit tests.
     // TODO: Private?
     virtual void validate() const = 0;

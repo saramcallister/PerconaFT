@@ -70,7 +70,7 @@ static void test_insert_remove(void) {
     if(verbose) {
         printf("\n we are going to insert the following block offsets\n");
         for(i=0; i<N; i++)
-		        printf("%" PRIu64 "\t", input_vector[i].offset);
+		        printf("%" PRIu64 "\t", input_vector[i].offset.to_int());
     }
 	  for(i=0; i<N; i++) {
 		    tree->insert(input_vector[i]);
@@ -79,12 +79,14 @@ static void test_insert_remove(void) {
     tree->validate_balance();
     rbtnode_mhs::blockpair * p_bps = &old_vector[0];
 	  tree->validate_inorder(p_bps); 
-    printf("min node of the tree:%" PRIu64 "\n", tree->min_node()->hole.offset);
-    printf("max node of the tree:%" PRIu64 "\n", tree->max_node()->hole.offset);
+    printf("min node of the tree:%" PRIu64 "\n",
+           rbn_offset(tree->min_node()).to_int());
+    printf("max node of the tree:%" PRIu64 "\n",
+           rbn_offset(tree->max_node()).to_int());
 
 	  for(i=0; i<N; i++) {
 			// tree->validate_balance();   
-       tree->raw_remove(input_vector[i].offset);
+       tree->raw_remove(input_vector[i].offset.to_int());
 		    
     }
 

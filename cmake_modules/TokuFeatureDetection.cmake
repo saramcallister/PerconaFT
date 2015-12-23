@@ -8,6 +8,7 @@ if(USE_VALGRIND)
 endif()
 
 option(TOKU_DEBUG_PARANOID "Enable paranoid asserts." ON)
+option(USE_TREE_ALLOC "Enable tree block allocator" ON)
 
 include(CheckIncludeFiles)
 

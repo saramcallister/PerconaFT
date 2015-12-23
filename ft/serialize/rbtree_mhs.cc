@@ -59,7 +59,7 @@ void rbtree_mhs::pre_order(rbtnode_mhs* tree) const
 {
 	  if(tree != NULL)
 	  {
-      std::cout<< tree->hole.offset << " " ;
+      std::cout<< rbn_offset(tree).to_int() << " " ;
 		    pre_order(tree->left);
 		    pre_order(tree->right);
 	  }
@@ -75,7 +75,7 @@ void rbtree_mhs::in_order(rbtnode_mhs* tree) const
 	  if(tree != NULL)
 	  {
 		    in_order(tree->left);
-        std::cout<< tree->hole.offset << " " ;
+        std::cout<< rbn_offset(tree).to_int() << " " ;
 		    in_order(tree->right);
 	  }
 }
@@ -108,7 +108,7 @@ void rbtree_mhs::post_order(rbtnode_mhs* tree) const
 	  {
 		    post_order(tree->left);
 		    post_order(tree->right);
-        std::cout<< tree->hole.offset << " " ;
+        std::cout<< rbn_offset(tree).to_int() << " " ;
   	}
 }
 
@@ -119,9 +119,9 @@ void rbtree_mhs::post_order()
 
 rbtnode_mhs * rbtree_mhs::search_by_offset(uint64_t offset) {
     rbtnode_mhs * x = m_root; 
-    while ((x!=NULL) && (x->hole.offset!=offset))
+    while ((x!=NULL) && (rbn_offset(x).to_int()!=offset))
 	  {
-		    if (offset < x->hole.offset)
+		    if (offset < rbn_offset(x).to_int())
 			      x = x->left;
 		    else
 			      x = x->right;
@@ -337,7 +337,7 @@ void rbtree_mhs:: is_new_node_mergable(rbtnode_mhs * pred, rbtnode_mhs * succ,
                                        bool * left_merge, bool * right_merge) {
 
     if(pred) {
-        uint64_t end_of_pred = rbn_size(pred) + rbn_offset(pred);
+        mhs_uint64_t end_of_pred = rbn_size(pred) + rbn_offset(pred);
         if(end_of_pred < pair.offset)
             *left_merge = false;
         else {
@@ -346,8 +346,8 @@ void rbtree_mhs:: is_new_node_mergable(rbtnode_mhs * pred, rbtnode_mhs * succ,
           }
         }   
     if(succ) {
-        uint64_t begin_of_succ = rbn_offset(succ);
-        uint64_t end_of_node = pair.offset + pair.size;
+        mhs_uint64_t begin_of_succ = rbn_offset(succ);
+        mhs_uint64_t end_of_node = pair.offset + pair.size;
         if(end_of_node < begin_of_succ) {
             *right_merge = false;
           } else {
@@ -395,6 +395,7 @@ void rbtree_mhs:: absorb_new_node(rbtnode_mhs * pred,  rbtnode_mhs *succ,
         recalculate_mhs(pred);
     } else if(right_merge) {
         rbn_offset(succ) -= pair.size;
+        rbn_size(succ) += pair.size;
         recalculate_mhs(succ);
     }
 }
@@ -637,9 +638,9 @@ static inline uint64_t align(uint64_t value, uint64_t ba_alignment) {
     return ((value + ba_alignment - 1) / ba_alignment) * ba_alignment;
 }
 uint64_t rbtree_mhs::remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t size){
-    uint64_t n_offset = rbn_offset(node);
-    uint64_t n_size = rbn_size(node);
-    uint64_t answer_offset = align(rbn_offset(node), m_align);
+    mhs_uint64_t n_offset = rbn_offset(node);
+    mhs_uint64_t n_size = rbn_size(node);
+    mhs_uint64_t answer_offset(align(rbn_offset(node).to_int(), m_align));
   
     assert((answer_offset + size) <= (n_offset + n_size));
     if(answer_offset == n_offset) {    
@@ -662,7 +663,7 @@ uint64_t rbtree_mhs::remove(rbtnode_mhs * & root, rbtnode_mhs * node, size_t siz
                    -(answer_offset+size)});
         }
     }
-    return answer_offset;
+    return answer_offset.to_int();
 }
 
 void rbtree_mhs::raw_remove_fixup(rbtnode_mhs * & root, rbtnode_mhs * node, rbtnode_mhs *
@@ -762,12 +763,13 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 {
 	  if(tree != NULL)  {
 		    if(dir==0)
-			      std::cout << std::setw(2) <<"("<< tree->hole.offset <<"," <<
-                tree->hole.size<<")" << "(B) is root" <<  std::endl;
+			      std::cout << std::setw(2) <<"("<< rbn_offset(tree).to_int() <<"," <<
+                rbn_size(tree).to_int()<<")" << "(B) is root" <<  std::endl;
 		    else			
-			      std::cout << std::setw(2) <<"("<< tree->hole.offset <<","<<
-                tree->hole.size<<")" <<
-              (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) << pair.offset <<
+			      std::cout << std::setw(2) <<"("<< rbn_offset(tree).to_int() <<","<<
+                rbn_size(tree).to_int()<<")" <<
+              (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) <<
+              pair.offset.to_int() <<
               "'s "  << std::setw(12) << (dir==RIGHT?"right child" : "left child")<<  std::endl;
 
 		    dump(tree->left, tree->hole, LEFT);
@@ -778,11 +780,14 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 
 
 uint64_t rbtree_mhs::get_effective_size(rbtnode_mhs * node) {
-    uint64_t offset = rbn_offset(node);
-    uint64_t size = rbn_size(node);
-    uint64_t end = offset + size;
-    uint64_t aligned_offset = align(offset, m_align);
-    return end - aligned_offset;
+    mhs_uint64_t offset = rbn_offset(node);
+    mhs_uint64_t size = rbn_size(node);
+    mhs_uint64_t end = offset + size;
+    mhs_uint64_t aligned_offset(align(offset.to_int(), m_align));
+    if(aligned_offset > end) {
+        return 0;
+    }
+    return (end - aligned_offset).to_int();
 }
 
 void rbtree_mhs::dump() {
@@ -795,6 +800,16 @@ static void vis_bal_f(void *  extra, rbtnode_mhs * node, uint64_t depth) {
     uint64_t ** p = (uint64_t **) extra;
     uint64_t min = *p[0];
     uint64_t max = *p[1];
+    if(node->left) {
+        rbtnode_mhs * left = node->left;
+        assert(node == left->parent);
+    } 
+
+    if(node->right) {
+        rbtnode_mhs * right = node->right;
+        assert(node == right->parent);
+    } 
+
     if(!node->left || !node->right) {
         if(min > depth) {
             *p[0] = depth;
@@ -808,6 +823,9 @@ static void vis_bal_f(void *  extra, rbtnode_mhs * node, uint64_t depth) {
 void rbtree_mhs::validate_balance() {
   uint64_t min_depth = 0xffffffffffffffff;
   uint64_t max_depth = 0;
+  if(!m_root) {
+      return;
+  }
   uint64_t* p[2] = {&min_depth, &max_depth};
   in_order_visitor(vis_bal_f, (void *)p);
   if((min_depth+1)*2 < max_depth+1)
@@ -843,6 +861,7 @@ uint64_t rbtree_mhs::validate_mhs(rbtnode_mhs * node) {
 }
 
 void rbtree_mhs::validate_mhs() { 
+    if(!m_root) return;
     uint64_t mhs_left = validate_mhs(m_root->left);
     uint64_t mhs_right = validate_mhs(m_root->right);
     assert(mhs_left == rbn_left_mhs(m_root));

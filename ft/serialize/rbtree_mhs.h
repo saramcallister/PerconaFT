@@ -90,17 +90,118 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 enum rbtcolor {RED, BLACK};
 enum direction {LEFT=1,RIGHT};
 
+//I am a bit tired of fixing overflow/underflow, just quickly craft some int
+ //class that has an infinity-like max value and prevents overflow and
+ //underflow. If you got a file offset larger than MHS_MAX_VAL, it is not
+ //a problem here. :-/  - JYM
+
+class mhs_uint64_t {
+    uint64_t value;  
+public:
+    static const uint64_t MHS_MAX_VAL = 0xffffffffffffffff;  
+    mhs_uint64_t(): value(0) {
+    }
+    mhs_uint64_t(uint64_t s): value(s) {
+    }
+    bool operator < (const mhs_uint64_t & r) const {
+        if(this->value == MHS_MAX_VAL && r.to_int() == MHS_MAX_VAL) 
+            assert(0); //impossible case
+        return (value < r.to_int());
+    }
+    bool operator > (const mhs_uint64_t & r) const {
+        if(this->value == MHS_MAX_VAL && r.to_int() == MHS_MAX_VAL) 
+            assert(0);
+        return (value > r.to_int());
+    }   
+    bool operator <= (const mhs_uint64_t & r) const {
+        if(this->value == MHS_MAX_VAL && r.to_int() == MHS_MAX_VAL) 
+            assert(0); //impossible case
+        return (value <= r.to_int());
+    }
+    bool operator >= (const mhs_uint64_t & r) const {
+        if(this->value == MHS_MAX_VAL && r.to_int() == MHS_MAX_VAL) 
+            assert(0);
+        return (value >= r.to_int());
+    }  
+    mhs_uint64_t operator +(const mhs_uint64_t & r) const {
+        if(this->value == MHS_MAX_VAL || r.to_int() == MHS_MAX_VAL) {
+            mhs_uint64_t tmp(MHS_MAX_VAL);
+            return tmp;
+        } else {
+          //detecting overflow
+          assert((MHS_MAX_VAL - this->value) >= r.to_int());
+          uint64_t plus = this->value + r.to_int();
+          mhs_uint64_t tmp(plus);
+          return tmp;
+        }
+    }
+    mhs_uint64_t operator - (const mhs_uint64_t & r) const {
+        if(r.to_int() == MHS_MAX_VAL) {
+            assert(0); //this is impossible
+        } if(this->value == MHS_MAX_VAL) {
+            return *this;
+        } else {
+            assert(this->value >= r.to_int());
+            uint64_t minus = this->value - r.to_int();
+            mhs_uint64_t tmp(minus);
+            return tmp;
+        }
+
+    }
+    mhs_uint64_t operator -= (const mhs_uint64_t & r) {
+        if(this->value != MHS_MAX_VAL) {
+            if(r.to_int() == MHS_MAX_VAL) {
+                assert(0); //this is impossible
+            } else {
+                assert(this->value >= r.to_int());
+                this->value -= r.to_int();
+            }
+        }
+        return *this;
+    }
+
+    mhs_uint64_t operator += (const mhs_uint64_t & r) {
+        if(this->value != MHS_MAX_VAL) {
+            if(r.to_int() == MHS_MAX_VAL) {
+                this->value = MHS_MAX_VAL;
+            } else {
+                assert((MHS_MAX_VAL - this->value) >= r.to_int());
+                this->value += r.to_int();
+            }
+        }
+        return *this;
+    }
+    bool operator == (const mhs_uint64_t & r) const {
+        return (this->value == r.to_int());
+    }
+
+    bool operator != (const mhs_uint64_t & r) const {
+        return (this->value != r.to_int());
+    }
+    mhs_uint64_t operator = (const mhs_uint64_t & r) {
+        this->value = r.to_int(); 
+        return *this;
+    }
+    uint64_t to_int() const {
+        return value;
+    }
+};
 
 class rbtnode_mhs {
 public:
+
 struct blockpair {
-    uint64_t offset;
-    uint64_t size;
+    mhs_uint64_t offset;
+    mhs_uint64_t size;
     blockpair() :
          offset(0), size(0) {
     }
     blockpair(uint64_t o, uint64_t s) :
          offset(o), size(s) {
+    }
+
+    blockpair(mhs_uint64_t o, mhs_uint64_t s) :
+         offset(o.to_int()), size(s.to_int()) {
     }
     int operator<(const struct blockpair &rhs) const {
         return offset < rhs.offset;
