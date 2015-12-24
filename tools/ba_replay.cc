@@ -229,6 +229,7 @@ static vector<string> canonicalize_trace_from(FILE *file) {
                 allocation_seq_num++;
             } else if (fn == "ba_trace_free") {
                 const uint64_t offset = parse_uint64(&ptr, line_num);
+                const uint64_t size = parse_uint64(&ptr, line_num);
                 ba_replay_assert(map->count(offset) != 0, "corrupted trace: invalid free", line, line_num);
 
                 // get the alloc seq num for an allcation that occurred at `offset'
@@ -239,9 +240,11 @@ static vector<string> canonicalize_trace_from(FILE *file) {
                 // write `free(asn)'. otherwise, the blockpair was initialized from create_from_blockpairs
                 // and we write the original offset.
                 if (asn != ASN_NONE) {
-                    ss << "ba_trace_free_asn" << ' ' << canonical_allocator_id << ' ' << asn << std::endl;
+                    ss << "ba_trace_free_asn" << ' ' << canonical_allocator_id
+                        << ' ' << asn << ' ' << size << std::endl;
                 } else {
-                    ss << "ba_trace_free_offset" << ' ' << canonical_allocator_id << ' ' << offset << std::endl;
+                    ss << "ba_trace_free_offset" << ' ' <<
+                        canonical_allocator_id << ' ' << offset << ' ' << size << std::endl;
                 }
             } else if (fn == "ba_trace_destroy") {
                 // Remove this allocator from both maps
@@ -400,17 +403,19 @@ static void replay_canonicalized_trace(const vector<string> &canonicalized_trace
             } else if (fn == "ba_trace_free_asn") {
                 // replay a `free' on a block whose offset is the result of an alloc with an asn
                 const uint64_t asn = parse_uint64(&ptr, line_num);
+                const uint64_t size = parse_uint64(&ptr, line_num);
                 ba_replay_assert(seq_num_to_offset.count(asn) == 1,
                                  "corrupted canonical trace: double free (asn unused)", line, line_num);
 
                 const uint64_t offset = seq_num_to_offset[asn];
-                ba->free_block(offset);
+                ba->free_block(offset, size);
                 seq_num_to_offset.erase(asn);
                 stats->n_free++;
             } else if (fn == "ba_trace_free_offset") {
                 // replay a `free' on a block whose offset was explicitly set during a create_from_blockpairs
                 const uint64_t offset = parse_uint64(&ptr, line_num);
-                ba->free_block(offset);
+                const uint64_t size = parse_uint64(&ptr, line_num);
+                ba->free_block(offset, size);
                 stats->n_free++;
             } else if (fn == "ba_trace_destroy") {
                 TOKU_DB_FRAGMENTATION_S report;

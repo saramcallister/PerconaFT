@@ -150,7 +150,7 @@ private:
     void _trace_create_from_blockpairs(void);
     void _trace_destroy(void);
     void _trace_alloc(uint64_t size, uint64_t heat, uint64_t offset);
-    void _trace_free(uint64_t offset);
+    void _trace_free(uint64_t offset, uint64_t size);
 
     // How much to reserve at the beginning
     uint64_t _reserve_at_beginning;

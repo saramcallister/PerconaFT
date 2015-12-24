@@ -102,6 +102,10 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
     memcpy(pairs, translation_pairs, n_blocks * sizeof(struct blockpair));
     std::sort(pairs, pairs + n_blocks); 
     
+    if(pairs[0].offset > reserve_at_beginning) {
+        _tree->insert({reserve_at_beginning,
+                      pairs[0].offset - reserve_at_beginning});
+    } 
     for (uint64_t i = 0; i < _n_blocks; i++) {
         // Allocator does not support size 0 blocks. See block_allocator_free_block.
         invariant(pairs[i].size > 0);
@@ -109,15 +113,14 @@ void tree_block_allocator::create_from_blockpairs(uint64_t reserve_at_beginning,
         invariant(pairs[i].offset % _alignment == 0);
 
         _n_bytes_in_use += pairs[i].size;
-    
-        uint64_t free_offset = 0;
-        uint64_t free_size = MAX_BYTE;
-    
-        free_offset = pairs[i].offset+pairs[i].size;
+
+        mhs_uint64_t free_size(MAX_BYTE);
+        mhs_uint64_t free_offset(pairs[i].offset+pairs[i].size);
         if(i < n_blocks -1 ){
-            assert(pairs[i+1].offset >= (pairs[i].offset+pairs[i].size));
-            free_size = pairs[i+1].offset - (pairs[i].offset + pairs[i].size);
-            if(!free_size) 
+            mhs_uint64_t next_offset(pairs[i+1].offset);
+            assert(next_offset >= free_offset);
+            free_size = next_offset - free_offset;
+            if(free_size == 0) 
                 continue;
         }
         _tree->insert({free_offset, free_size});
@@ -162,7 +165,7 @@ void tree_block_allocator::free_block(uint64_t offset, uint64_t size) {
     _n_blocks--;
     VALIDATE();
     
-    _trace_free(offset);
+    _trace_free(offset, size);
 }
 
 uint64_t tree_block_allocator::allocated_limit() const {
@@ -332,10 +335,11 @@ void tree_block_allocator::_trace_alloc(uint64_t size, uint64_t heat, uint64_t o
     }
 }
 
-void tree_block_allocator::_trace_free(uint64_t offset) {
+void tree_block_allocator::_trace_free(uint64_t offset, uint64_t size) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
-        fprintf(ba_trace_file, "ba_trace_free %p %" PRIu64 "\n", this, offset);
+        fprintf(ba_trace_file, "ba_trace_free %p %" PRIu64 " %" PRIu64 "\n",
+                this, offset, size);
         toku_mutex_unlock(&_trace_lock);
 
         fflush(ba_trace_file);

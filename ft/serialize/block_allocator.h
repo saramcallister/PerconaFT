@@ -43,7 +43,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "portability/toku_pthread.h"
 #include "portability/toku_stdint.h"
 #include "portability/toku_stdlib.h"
-
+#define USE_TREE_ALLOC 1
 // Block allocator.
 //
 // A block allocator manages the allocation of variable-sized blocks.

@@ -243,7 +243,7 @@ void array_block_allocator::free_block(uint64_t offset, uint64_t UU(size)) {
     _n_blocks--;
     VALIDATE();
     
-    _trace_free(offset);
+    _trace_free(offset, size);
 }
 
 uint64_t array_block_allocator::block_size(uint64_t offset) {
@@ -421,10 +421,11 @@ void array_block_allocator::_trace_alloc(uint64_t size, uint64_t heat, uint64_t 
     }
 }
 
-void array_block_allocator::_trace_free(uint64_t offset) {
+void array_block_allocator::_trace_free(uint64_t offset, uint64_t size) {
     if (ba_trace_file != nullptr) {
         toku_mutex_lock(&_trace_lock);
-        fprintf(ba_trace_file, "ba_trace_free %p %" PRIu64 "\n", this, offset);
+        fprintf(ba_trace_file, "ba_trace_free %p %" PRIu64 " %" PRIu64 "\n", this, offset,
+                size);
         toku_mutex_unlock(&_trace_lock);
 
         fflush(ba_trace_file);
