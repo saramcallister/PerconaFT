@@ -83,7 +83,7 @@ static void test_insert_remove(void) {
     assert(offset == 2);
     tree->validate_balance();
     tree->validate_mhs();
-    
+    tree->dump();    
     tree->destroy();
 
 }

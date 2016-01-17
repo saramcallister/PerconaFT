@@ -156,8 +156,13 @@ rbtnode_mhs * rbtree_mhs::search_first_fit_by_size_helper(rbtnode_mhs* x, uint64
           else {
               if(rbn_right_mhs(x) >= size) 
                   return search_first_fit_by_size_helper(x->right, size);
-              else 
-                  assert(0);;
+              else {
+                  //this is an invalid state
+                  dump();
+                  validate_balance();
+                  validate_mhs();
+                  assert(0);
+              }
           }      
     }
 
@@ -764,10 +769,14 @@ void rbtree_mhs::dump(rbtnode_mhs * tree, rbtnode_mhs::blockpair pair,
 	  if(tree != NULL)  {
 		    if(dir==0)
 			      std::cout << std::setw(2) <<"("<< rbn_offset(tree).to_int() <<"," <<
-                rbn_size(tree).to_int()<<")" << "(B) is root" <<  std::endl;
+                rbn_size(tree).to_int() <<", mhs:(" <<
+                rbn_left_mhs(tree) <<"," <<
+                rbn_right_mhs(tree)<<")"<<")" << "(B) is root" <<  std::endl;
 		    else			
 			      std::cout << std::setw(2) <<"("<< rbn_offset(tree).to_int() <<","<<
-                rbn_size(tree).to_int()<<")" <<
+                rbn_size(tree).to_int()<<",mhs:(" << 
+                rbn_left_mhs(tree) << "," <<
+                rbn_right_mhs(tree) << ")" << ")" <<
               (rbn_is_red(tree)?"(R)":"(B)") << " is " << std::setw(2) <<
               pair.offset.to_int() <<
               "'s "  << std::setw(12) << (dir==RIGHT?"right child" : "left child")<<  std::endl;
