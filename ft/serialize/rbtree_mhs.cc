@@ -863,7 +863,16 @@ uint64_t rbtree_mhs::validate_mhs(rbtnode_mhs * node) {
   else {
       uint64_t mhs_left = validate_mhs(node->left);
       uint64_t mhs_right = validate_mhs(node->right);
+      if(mhs_left != rbn_left_mhs(node)) {
+          printf("assert failure: mhs_left = %" PRIu64 "\n", mhs_left);
+          dump(node, node->hole, (direction)0);          
+      }
       assert(mhs_left == rbn_left_mhs(node));
+
+      if(mhs_right != rbn_right_mhs(node)) {
+          printf("assert failure: mhs_right = %" PRIu64 "\n", mhs_right);
+          dump(node, node->hole, (direction)0);          
+      }
       assert(mhs_right == rbn_right_mhs(node));
       return std::max(get_effective_size(node),std::max(mhs_left, mhs_right));
   }
