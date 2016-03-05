@@ -327,8 +327,10 @@ void rbtree_mhs:: recalculate_mhs(rbtnode_mhs * node) {
     uint64_t max_mhs = mhs_of_subtree(node);
     if(node == parent->left) {
       p_node_mhs = &rbn_left_mhs(parent);
-    } else {
+    } else if(node == parent->right){
       p_node_mhs = &rbn_right_mhs(parent);
+    } else {
+      return;
     }
     if(*p_node_mhs != max_mhs) { 
       *p_node_mhs = max_mhs;
