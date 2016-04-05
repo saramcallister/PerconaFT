@@ -84,7 +84,7 @@ static void test_insert_remove(void) {
     tree->validate_balance();
     tree->validate_mhs();
     tree->dump();    
-    tree->destroy();
+    delete tree;
 
 }
 

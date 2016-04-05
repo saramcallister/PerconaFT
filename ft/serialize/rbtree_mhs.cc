@@ -599,10 +599,8 @@ void rbtree_mhs::raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node) {
 		rbn_left_mhs(replace) = rbn_left_mhs(node);
     node->left->parent = replace;
     recalculate_mhs(replace);
-    validate_mhs(root);
 		if (color == BLACK)
 			raw_remove_fixup(root, child, parent);
-    validate_mhs(root);
 		delete node;
 		return ;
 	  }
@@ -630,10 +628,8 @@ void rbtree_mhs::raw_remove(rbtnode_mhs * &root, rbtnode_mhs * node) {
         recalculate_mhs(parent);
 	  } else
 		    root = child;
-    validate_mhs(root);
 	  if (color == BLACK)
 		    raw_remove_fixup(root, child, parent);
-    validate_mhs(root);
 	  delete node;
 
 }
@@ -754,9 +750,9 @@ void rbtree_mhs::destroy(rbtnode_mhs* &tree)  {
 		    return ;
 
 	  if (tree->left != NULL)
-		    return destroy(tree->left);
+		    destroy(tree->left);
 	  if (tree->right != NULL)
-		    return destroy(tree->right);
+		    destroy(tree->right);
 
 	  delete tree;
 	  tree=NULL;
