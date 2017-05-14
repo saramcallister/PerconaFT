@@ -115,7 +115,7 @@ get_cursor_prelocked_flags(uint32_t flags, DBC* dbc) {
     uint32_t lock_flags = flags & (DB_PRELOCKED | DB_PRELOCKED_WRITE);
 
     //DB_READ_UNCOMMITTED and DB_READ_COMMITTED transactions 'own' all read locks for user-data dictionaries.
-    if (dbc_struct_i(dbc)->iso != TOKU_ISO_SERIALIZABLE) {
+    if (dbc_struct_i(dbc)->iso != TOKU_ISO_SERIALIZABLE && !(dbc_struct_i(dbc)->iso == TOKU_ISO_SNAPSHOT && dbc_struct_i(dbc)->locking_read)) {
         lock_flags |= DB_PRELOCKED;
     }
     return lock_flags;
@@ -697,7 +697,7 @@ c_set_bounds(DBC *dbc, const DBT *left_key, const DBT *right_key, bool pre_acqui
     if (!db->i->lt || !txn || !pre_acquire)
         return 0;
     //READ_UNCOMMITTED and READ_COMMITTED transactions do not need read locks.
-    if (!dbc_struct_i(dbc)->rmw && dbc_struct_i(dbc)->iso != TOKU_ISO_SERIALIZABLE)
+    if (!dbc_struct_i(dbc)->rmw && dbc_struct_i(dbc)->iso != TOKU_ISO_SERIALIZABLE && !(dbc_struct_i(dbc)->iso == TOKU_ISO_SNAPSHOT && dbc_struct_i(dbc)->locking_read))
         return 0;
 
     toku::lock_request::type lock_type = dbc_struct_i(dbc)->rmw ?
@@ -789,7 +789,7 @@ toku_db_cursor_internal(DB * db, DB_TXN * txn, DBC *c, uint32_t flags, int is_te
     HANDLE_DB_ILLEGAL_WORKING_PARENT_TXN(db, txn);
     DB_ENV* env = db->dbenv;
 
-    if (flags & ~(DB_SERIALIZABLE | DB_INHERIT_ISOLATION | DB_RMW | DBC_DISABLE_PREFETCHING)) {
+    if (flags & ~(DB_SERIALIZABLE | DB_INHERIT_ISOLATION | DB_LOCKING_READ|DB_RMW | DBC_DISABLE_PREFETCHING)) {
         return toku_ydb_do_error(
             env, 
             EINVAL, 
@@ -834,6 +834,7 @@ toku_db_cursor_internal(DB * db, DB_TXN * txn, DBC *c, uint32_t flags, int is_te
         dbc_struct_i(c)->iso = txn ? db_txn_struct_i(txn)->iso : TOKU_ISO_SERIALIZABLE;
     }
     dbc_struct_i(c)->rmw = (flags & DB_RMW) != 0;
+    dbc_struct_i(c)->locking_read = (flags & DB_LOCKING_READ) != 0;
     enum cursor_read_type read_type = C_READ_ANY; // default, used in serializable and read uncommitted
     if (txn) {
         if (dbc_struct_i(c)->iso == TOKU_ISO_READ_COMMITTED ||

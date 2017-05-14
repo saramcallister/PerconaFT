@@ -241,6 +241,7 @@ struct __toku_dbc_internal {
     // if the rmw flag is asserted, cursor operations (like set) grab write locks instead of read locks
     // the rmw flag is set when the cursor is created with the DB_RMW flag set
     bool rmw;
+    bool locking_read;
 };
 
 static_assert(sizeof(__toku_dbc_internal) <= sizeof(((DBC *) nullptr)->_internal),
