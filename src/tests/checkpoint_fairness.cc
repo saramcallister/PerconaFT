@@ -117,7 +117,7 @@ int test_main(int argc, char * const argv[]) {
 
     pthread_attr_t tattr;
     pthread_attr_init(&tattr);
-    pthread_attr_setschedpolicy(&tattr, SCHED_RR);
+    pthread_attr_setschedpolicy(&tattr, SCHED_OTHER);
     for (int i=0; i<n_threads; i++) {
 	ids[i]=i;
 	{ int chk_r = toku_pthread_create(&thds[i], &tattr, start_txns, &ids[i]); CKERR(chk_r); }
