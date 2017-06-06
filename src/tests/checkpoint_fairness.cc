@@ -114,9 +114,14 @@ int test_main(int argc, char * const argv[]) {
 
     pthread_t thds[n_threads];
     int       ids[n_threads];
+
+    pthread_attr_t tattr;
+    pthread_attr_init(&tattr);
+    /* set the scheduling policy to SCHED_FIFO */
+    pthread_attr_setschedpolicy(&tattr, SCHED_FIFO);
     for (int i=0; i<n_threads; i++) {
 	ids[i]=i;
-	{ int chk_r = toku_pthread_create(&thds[i], NULL, start_txns, &ids[i]); CKERR(chk_r); }
+	{ int chk_r = toku_pthread_create(&thds[i], &tattr, start_txns, &ids[i]); CKERR(chk_r); }
     }
     start_checkpoints();
 
