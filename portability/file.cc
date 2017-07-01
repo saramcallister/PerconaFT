@@ -71,27 +71,43 @@ void toku_fs_get_write_info(time_t *enospc_last_time, uint64_t *enospc_current, 
 
 //Print any necessary errors
 //Return whether we should try the write again.
+#define dump_state_of_write_error() \
+    fprintf(stderr, \
+            "%s:%d:try_again_after_handling_write_error - " \
+            "write failed with an error: " \
+            "%s \n" \
+            "file descriptor[%d] " \
+            "length[%" PRIu64 "] " \
+            "errno[%d] \n" \
+            "%s \n", \
+            __FILE__, \
+            __LINE__, \
+            err_msg, \
+            fd, \
+            len, \
+            errno_write, \
+            dbg_context); \
+
 static void
-try_again_after_handling_write_error(int fd, size_t len, ssize_t r_write) {
+try_again_after_handling_write_error(int fd,
+                                     size_t len,
+                                     ssize_t r_write,
+				     const char * dbg_context) {
     int try_again = 0;
 
     assert(r_write < 0);
     int errno_write = get_error_errno();
     switch (errno_write) {
     case EINTR: { //The call was interrupted by a signal before any data was written; see signal(7).
-	char err_msg[sizeof("Write of [] bytes to fd=[] interrupted.  Retrying.") + 20+10]; //64 bit is 20 chars, 32 bit is 10 chars
-	snprintf(err_msg, sizeof(err_msg), "Write of [%" PRIu64 "] bytes to fd=[%d] interrupted.  Retrying.", (uint64_t)len, fd);
-	perror(err_msg);
-	fflush(stderr);
+	char err_msg[] = "Write to the file interrupted.  Retrying.";
+        dump_state_of_write_error();
 	try_again = 1;
 	break;
     }
     case ENOSPC: {
         if (toku_assert_on_write_enospc) {
-            char err_msg[sizeof("Failed write of [] bytes to fd=[].") + 20+10]; //64 bit is 20 chars, 32 bit is 10 chars
-            snprintf(err_msg, sizeof(err_msg), "Failed write of [%" PRIu64 "] bytes to fd=[%d].", (uint64_t)len, fd);
-            perror(err_msg);
-            fflush(stderr);
+            char err_msg[] = "Failed write to the file due to no space. Will not retry";
+            dump_state_of_write_error();
             int out_of_disk_space = 1;
             assert(!out_of_disk_space); //Give an error message that might be useful if this is the only one that survives.
         } else {
@@ -113,14 +129,18 @@ try_again_after_handling_write_error(int fd, size_t len, ssize_t r_write) {
                 sprintf(fname, "/proc/%d/fd/%d", getpid(), fd);
                 ssize_t n = readlink(fname, symname, MY_MAX_PATH);
 
-                if ((int)n == -1)
-                    fprintf(stderr, "%.24s PerconaFT No space when writing %" PRIu64 " bytes to fd=%d ", tstr, (uint64_t) len, fd);
+                if ((int)n == -1) {
+                    char err_msg[sizeof("PerconaFT No space when writing to the file, retry in seconds") + 25 + 10 + 2];
+                    snprintf(err_msg, sizeof(err_msg), "%.24s PerconaFT No space when writing to the file, retry in %d seconds%s", tstr, toku_write_enospc_sleep, toku_write_enospc_sleep > 1? "s":"");
+                    dump_state_of_write_error();
+		}
                 else {
 		    tstr[n] = 0; // readlink doesn't append a NUL to the end of the buffer.
-                    fprintf(stderr, "%.24s PerconaFT No space when writing %" PRIu64 " bytes to %*s ", tstr, (uint64_t) len, (int) n, symname);
-		}
-                fprintf(stderr, "retry in %d second%s\n", toku_write_enospc_sleep, toku_write_enospc_sleep > 1 ? "s" : "");
-                fflush(stderr);
+                    //fprintf(stderr, "%.24s PerconaFT No space when writing %" PRIu64 " bytes to %*s ", tstr, (uint64_t) len, (int) n, symname);
+                    char err_msg[sizeof("PerconaFT No space when writing to , retry in seconds") + 25 + sizeof(symname) + 10 + 2];
+                    snprintf(err_msg, sizeof(err_msg), "%.24s PerconaFT No space when writing to %s, retry in %d seconds%s", tstr, symname, toku_write_enospc_sleep, toku_write_enospc_sleep > 1? "s":"");
+                    dump_state_of_write_error();
+	        }
             }
             sleep(toku_write_enospc_sleep);
             try_again = 1;
@@ -129,6 +149,8 @@ try_again_after_handling_write_error(int fd, size_t len, ssize_t r_write) {
         }
     }
     default:
+        char err_msg[] = "Write to the file failed due to other reasons:";
+        dump_state_of_write_error();
 	break;
     }
     assert(try_again);
@@ -187,7 +209,7 @@ void toku_set_func_pread (ssize_t (*pread_fun)(int, void *, size_t, off_t)) {
 }
 
 void
-toku_os_full_write (int fd, const void *buf, size_t len) {
+toku_os_full_write (int fd, const void *buf, size_t len, const char * dbg_context) {
     const char *bp = (const char *) buf;
     while (len > 0) {
         ssize_t r;
@@ -201,7 +223,7 @@ toku_os_full_write (int fd, const void *buf, size_t len) {
             bp            += r;
         }
         else {
-            try_again_after_handling_write_error(fd, len, r);
+            try_again_after_handling_write_error(fd, len, r, dbg_context);
         }
     }
     assert(len == 0);
@@ -229,7 +251,7 @@ toku_os_write (int fd, const void *buf, size_t len) {
 }
 
 void
-toku_os_full_pwrite (int fd, const void *buf, size_t len, toku_off_t off) {
+toku_os_full_pwrite (int fd, const void *buf, size_t len, toku_off_t off, const char * dbg_context) {
     assert(0==((long long)buf)%512);
     assert((len%512 == 0) && (off%512)==0); // to make pwrite work.
     const char *bp = (const char *) buf;
@@ -246,7 +268,7 @@ toku_os_full_pwrite (int fd, const void *buf, size_t len, toku_off_t off) {
             off           += r;
         }
         else {
-            try_again_after_handling_write_error(fd, len, r);
+            try_again_after_handling_write_error(fd, len, r, dbg_context);
         }
     }
     assert(len == 0);

@@ -149,7 +149,7 @@ min64(int64_t a, int64_t b) {
 }
 
 void
-toku_maybe_preallocate_in_file (int fd, int64_t size, int64_t expected_size, int64_t *new_size)
+toku_maybe_preallocate_in_file (int fd, int64_t size, int64_t expected_size, int64_t *new_size, const char * dbg_context)
 // Effect: make the file bigger by either doubling it or growing by 16MiB whichever is less, until it is at least size
 // Return 0 on success, otherwise an error number.
 {
@@ -183,7 +183,7 @@ toku_maybe_preallocate_in_file (int fd, int64_t size, int64_t expected_size, int
         memset(wbuf, 0, to_write);
         toku_off_t start_write = alignup64(file_size, stripe_width);
         invariant(start_write >= file_size);
-        toku_os_full_pwrite(fd, wbuf, to_write, start_write);
+        toku_os_full_pwrite(fd, wbuf, to_write, start_write, dbg_context);
         *new_size = start_write + to_write;
     }
     else {
@@ -818,10 +818,12 @@ int toku_serialize_ftnode_to(int fd,
     ft->blocktable.realloc_on_disk(
         blocknum, n_to_write, &offset, ft, fd, for_checkpoint);
 
+    char * fname = toku_cachefile_fname_in_env(ft->cf);
+    const char * dbg_context = construct_dbg_context_for_write_node(fname, for_checkpoint, __func__);
     tokutime_t t0 = toku_time_now();
-    toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
+    toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset, dbg_context);
     tokutime_t t1 = toku_time_now();
-
+    destruct_dbg_context_for_write(dbg_context);
     tokutime_t io_time = t1 - t0;
     toku_ft_status_update_flush_reason(
         node, n_uncompressed_bytes, n_to_write, io_time, for_checkpoint);
@@ -2904,7 +2906,11 @@ int toku_serialize_rollback_log_to(int fd,
     ft->blocktable.realloc_on_disk(
         blocknum, n_to_write, &offset, ft, fd, for_checkpoint);
 
-    toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
+    char * fname = toku_cachefile_fname_in_env(ft->cf);
+    const char * dbg_context = construct_dbg_context_for_write_node(fname, for_checkpoint, __func__);
+    toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset, dbg_context);
+    destruct_dbg_context_for_write(dbg_context);
+
     toku_free(compressed_buf);
     if (!is_serialized) {
         toku_static_serialized_rollback_log_destroy(&serialized_local);

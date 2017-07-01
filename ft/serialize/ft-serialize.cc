@@ -71,7 +71,7 @@ void toku_serialize_descriptor_contents_to_wbuf(struct wbuf *wb, DESCRIPTOR desc
 //descriptor.
 //Descriptors are NOT written during the header checkpoint process.
 void
-toku_serialize_descriptor_contents_to_fd(int fd, DESCRIPTOR desc, DISKOFF offset) {
+toku_serialize_descriptor_contents_to_fd(int fd, DESCRIPTOR desc, DISKOFF offset, const char * dbg_context) {
     // make the checksum
     int64_t size = toku_serialize_descriptor_size(desc)+4; //4 for checksum
     int64_t size_aligned = roundup_to_multiple(512, size);
@@ -88,7 +88,7 @@ toku_serialize_descriptor_contents_to_fd(int fd, DESCRIPTOR desc, DISKOFF offset
     lazy_assert(w.ndone==w.size);
     {
         //Actual Write translation table
-        toku_os_full_pwrite(fd, w.buf, size_aligned, offset);
+        toku_os_full_pwrite(fd, w.buf, size_aligned, offset, dbg_context);
     }
     toku_free(w.buf);
 }
@@ -852,8 +852,9 @@ void toku_serialize_ft_to(int fd, FT_HEADER h, block_table *bt, CACHEFILE cf) {
     int64_t address_translation;
 
     // Must serialize translation first, to get address,size for header.
+    const char * dbg_context = construct_dbg_context_for_write_others(toku_cachefile_fname_in_env(cf), __func__, "serializing ft for checkpoint");
     bt->serialize_translation_to_wbuf(
-        fd, &w_translation, &address_translation, &size_translation);
+        fd, &w_translation, &address_translation, &size_translation, dbg_context);
     invariant(size_translation == w_translation.ndone);
 
     // the number of bytes available in the buffer is 0 mod 512, and those last
@@ -880,7 +881,8 @@ void toku_serialize_ft_to(int fd, FT_HEADER h, block_table *bt, CACHEFILE cf) {
     toku_os_full_pwrite(fd,
                         w_translation.buf,
                         roundup_to_multiple(512, size_translation),
-                        address_translation);
+                        address_translation,
+                        dbg_context);
 
     // Everything but the header MUST be on disk before header starts.
     // Otherwise we will think the header is good and some blocks might not
@@ -900,7 +902,12 @@ void toku_serialize_ft_to(int fd, FT_HEADER h, block_table *bt, CACHEFILE cf) {
     main_offset = (h->checkpoint_count & 0x1)
                       ? 0
                       : BlockAllocator::BLOCK_ALLOCATOR_HEADER_RESERVE;
-    toku_os_full_pwrite(fd, w_main.buf, size_main_aligned, main_offset);
+    toku_os_full_pwrite(fd,
+                        w_main.buf,
+                        size_main_aligned,
+                        main_offset,
+                        dbg_context);
+    destruct_dbg_context_for_write(dbg_context);
     toku_free(w_main.buf);
     toku_free(w_translation.buf);
 }
