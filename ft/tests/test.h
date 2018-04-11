@@ -105,9 +105,9 @@ last_dummymsn(void) {
 
 
 struct check_pair {
-    uint32_t keylen;  // A keylen equal to 0xFFFFFFFF means don't check the keylen or the key.
+    uint64_t keylen;  // A keylen equal to 0xFFFFFFFF means don't check the keylen or the key.
     const void *key;     // A NULL key means don't check the key.
-    uint32_t vallen;  // Similarly for vallen and null val.
+    uint64_t vallen;  // Similarly for vallen and null val.
     const void *val;
     int call_count;
 };
@@ -308,6 +308,13 @@ public:
         return ev->m_num_eviction_thread_runs;
     }
 };
+static __attribute__((__unused__)) DBT *
+dbt_init(DBT *dbt, const void *data, uint32_t size) {
+    memset(dbt, 0, sizeof *dbt);
+    dbt->data = (void*)data;
+    dbt->size = size;
+    return dbt;
+}
 
 UU()
 static void copy_dbt(DBT *dest, const DBT *src) {

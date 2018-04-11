@@ -70,7 +70,7 @@ static void toku_rollback_flush_unused_log(ROLLBACK_LOG_NODE log,
     if (write_me) {
         DISKOFF offset;
         ft->blocktable.realloc_on_disk(
-            logname, 0, &offset, ft, fd, for_checkpoint);
+            logname, 0, &offset, (DISKOFF) -3, ft, fd, for_checkpoint);
     }
     if (!keep_me && !is_clone) {
         toku_free(log);

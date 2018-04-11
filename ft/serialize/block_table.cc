@@ -69,6 +69,9 @@ static const DISKOFF size_is_free = (DISKOFF)-1;
 // yet have a diskblock
 static const DISKOFF diskoff_unused = (DISKOFF)-2;
 
+// The header size is not determined yet.
+static const DISKOFF header_size_pending = (DISKOFF)-3;
+
 void block_table::_mutex_lock() { toku_mutex_lock(&_mutex); }
 
 void block_table::_mutex_unlock() { toku_mutex_unlock(&_mutex); }
@@ -179,6 +182,7 @@ void block_table::create() {
     for (int64_t i = 0; i < _checkpointed.length_of_array; i++) {
         _checkpointed.block_translation[i].size = 0;
         _checkpointed.block_translation[i].u.diskoff = diskoff_unused;
+        _checkpointed.block_translation[i].header_size = header_size_pending;
     }
 
     // we just created a default checkpointed, now copy it to current.
@@ -264,6 +268,8 @@ void block_table::_copy_translation(struct translation *dst,
     dst->block_translation[RESERVED_BLOCKNUM_TRANSLATION].size = 0;
     dst->block_translation[RESERVED_BLOCKNUM_TRANSLATION].u.diskoff =
         diskoff_unused;
+    dst->block_translation[RESERVED_BLOCKNUM_TRANSLATION].header_size =
+	header_size_pending;
 }
 
 int64_t block_table::get_blocks_in_use_unlocked() {
@@ -431,7 +437,7 @@ void block_table::block_free(uint64_t offset, uint64_t size) {
 int64_t block_table::_calculate_size_on_disk(struct translation *t) {
     return 8 +  // smallest_never_used_blocknum
            8 +  // blocknum_freelist_head
-           t->smallest_never_used_blocknum.b * 16 +  // Array
+           t->smallest_never_used_blocknum.b * sizeof(struct block_translation_pair) +  // Array
            4;                                        // 4 for checksum
 }
 
@@ -448,6 +454,7 @@ bool block_table::_translation_prevents_freeing(
 void block_table::_realloc_on_disk_internal(BLOCKNUM b,
                                             DISKOFF size,
                                             DISKOFF *offset,
+					    DISKOFF header_size,
                                             FT ft,
                                             bool for_checkpoint) {
     toku_mutex_assert_locked(&_mutex);
@@ -467,6 +474,7 @@ void block_table::_realloc_on_disk_internal(BLOCKNUM b,
 
     uint64_t allocator_offset = diskoff_unused;
     t->block_translation[b.b].size = size;
+    t->block_translation[b.b].header_size = header_size;
     if (size > 0) {
         // Allocate a new block if the size is greater than 0,
         // if the size is just 0, offset will be set to diskoff_unused
@@ -508,13 +516,14 @@ void block_table::_ensure_safe_write_unlocked(int fd,
 void block_table::realloc_on_disk(BLOCKNUM b,
                                   DISKOFF size,
                                   DISKOFF *offset,
+				  DISKOFF header_size,
                                   FT ft,
                                   int fd,
                                   bool for_checkpoint) {
     _mutex_lock();
     struct translation *t = &_current;
     _verify_valid_freeable_blocknum(t, b);
-    _realloc_on_disk_internal(b, size, offset, ft, for_checkpoint);
+    _realloc_on_disk_internal(b, size, offset, header_size, ft, for_checkpoint);
 
     _ensure_safe_write_unlocked(fd, size, *offset);
     _mutex_unlock();
@@ -545,6 +554,7 @@ void block_table::_alloc_inprogress_translation_on_disk_unlocked() {
     _bt_block_allocator->AllocBlock(size, &offset);
     t->block_translation[b.b].u.diskoff = offset;
     t->block_translation[b.b].size = size;
+    t->block_translation[b.b].header_size = header_size_pending;
 }
 
 // Effect: Serializes the blocktable to a wbuf (which starts uninitialized)
@@ -599,6 +609,7 @@ void block_table::serialize_translation_to_wbuf(int fd,
                    t->block_translation[i].size);
         wbuf_DISKOFF(w, t->block_translation[i].u.diskoff);
         wbuf_DISKOFF(w, t->block_translation[i].size);
+        wbuf_DISKOFF(w, t->block_translation[i].header_size);
     }
     uint32_t checksum = toku_x1764_finish(&w->checksum);
     wbuf_int(w, checksum);
@@ -635,6 +646,20 @@ void block_table::translate_blocknum_to_offset_size(BLOCKNUM b,
     _mutex_unlock();
 }
 
+// Perhaps rename: purpose is get disk address of a block, given its blocknum
+// (blockid?)
+void block_table::translate_blocknum_to_headersize(BLOCKNUM b,
+                                                    DISKOFF *header_size) {
+    _mutex_lock();
+    struct translation *t = &_current;
+    _verify_valid_blocknum(t, b);
+    if (header_size) {
+        *header_size = t->block_translation[b.b].header_size;
+    }
+    _mutex_unlock();
+}
+
+
 // Only called by toku_allocate_blocknum
 // Effect: expand the array to maintain size invariant
 // given that one more never-used blocknum will soon be used.
@@ -647,6 +672,7 @@ void block_table::_maybe_expand_translation(struct translation *t) {
         for (i = t->length_of_array; i < new_length; i++) {
             t->block_translation[i].u.next_free_blocknum = freelist_null;
             t->block_translation[i].size = size_is_free;
+            t->block_translation[i].header_size = header_size_pending;
         }
         t->length_of_array = new_length;
     }
@@ -673,6 +699,7 @@ void block_table::_allocate_blocknum_unlocked(BLOCKNUM *res, FT ft) {
     // blocknum is not free anymore
     t->block_translation[result.b].u.diskoff = diskoff_unused;
     t->block_translation[result.b].size = 0;
+    t->block_translation[result.b].header_size = header_size_pending;
     _verify_valid_freeable_blocknum(t, result);
     *res = result;
     ft_set_dirty(ft, false);
@@ -725,6 +752,7 @@ void block_table::_free_blocknum_unlocked(BLOCKNUM *bp,
     } else {
         paranoid_invariant(old_pair.size == 0);
         paranoid_invariant(old_pair.u.diskoff == diskoff_unused);
+        paranoid_invariant(old_pair.header_size == header_size_pending);
     }
     ft_set_dirty(ft, for_checkpoint);
 }
@@ -926,6 +954,7 @@ int block_table::_translation_deserialize_from_buffer(
     for (int64_t i = 0; i < t->length_of_array; i++) {
         t->block_translation[i].u.diskoff = rbuf_DISKOFF(&rb);
         t->block_translation[i].size = rbuf_DISKOFF(&rb);
+        t->block_translation[i].header_size = rbuf_DISKOFF(&rb);
     }
     invariant(_calculate_size_on_disk(t) == (int64_t)size_on_disk);
     invariant(t->block_translation[RESERVED_BLOCKNUM_TRANSLATION].size ==
@@ -1019,7 +1048,7 @@ void block_table::_realloc_descriptor_on_disk_unlocked(DISKOFF size,
                                                        FT ft) {
     toku_mutex_assert_locked(&_mutex);
     BLOCKNUM b = make_blocknum(RESERVED_BLOCKNUM_DESCRIPTOR);
-    _realloc_on_disk_internal(b, size, offset, ft, false);
+    _realloc_on_disk_internal(b, size, offset, header_size_pending, ft, false);
 }
 
 void block_table::realloc_descriptor_on_disk(DISKOFF size,

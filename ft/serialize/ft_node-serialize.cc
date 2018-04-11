@@ -771,6 +771,18 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
     return 0;
 }
 
+static long
+ftnode_header_size (FTNODE node)
+// Effect: Estimate how much main memory a node requires.
+{
+    long retval = 0;
+    int n_children = node->n_children;
+    retval += sizeof(*node);
+    retval += (n_children)*(sizeof(node->bp[0]));
+    retval += node->pivotkeys.total_size();
+    return retval;
+}
+
 int toku_serialize_ftnode_to(int fd,
                              BLOCKNUM blocknum,
                              FTNODE node,
@@ -813,10 +825,10 @@ int toku_serialize_ftnode_to(int fd,
     // including the zeros
     invariant(blocknum.b >= 0);
     DISKOFF offset;
-
+    DISKOFF header_size = ftnode_header_size(node);
     // Dirties the ft
     ft->blocktable.realloc_on_disk(
-        blocknum, n_to_write, &offset, ft, fd, for_checkpoint);
+        blocknum, n_to_write, &offset, header_size, ft, fd, for_checkpoint);
 
     tokutime_t t0 = toku_time_now();
     toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
@@ -1083,13 +1095,22 @@ static const int read_header_heuristic_max = 32*1024;
 #define MIN(a,b) (((a)>(b)) ? (b) : (a))
 #endif
 
+#ifndef MAX
+#define MAX(a,b) (((a)>(b)) ? (a) : (b))
+#endif
+
 // Effect: If the header part of the node is small enough, then read it into the rbuf.  The rbuf will be allocated to be big enough in any case.
 static void read_ftnode_header_from_fd_into_rbuf_if_small_enough(int fd, BLOCKNUM blocknum,
                                                                  FT ft, struct rbuf *rb,
                                                                  ftnode_fetch_extra *bfe) {
-    DISKOFF offset, size;
+    DISKOFF read_size, offset, size, header_size;
     ft->blocktable.translate_blocknum_to_offset_size(blocknum, &offset, &size);
-    DISKOFF read_size = roundup_to_multiple(512, MIN(read_header_heuristic_max, size));
+    ft->blocktable.translate_blocknum_to_headersize(blocknum, &header_size);
+    if(header_size == (DISKOFF) (-3)) {
+        read_size = roundup_to_multiple(512, MIN(read_header_heuristic_max, size));
+    } else {
+        read_size = roundup_to_multiple(512, MAX(header_size, MIN(read_header_heuristic_max, size)));
+    }
     uint8_t *XMALLOC_N_ALIGNED(512, roundup_to_multiple(512, size), raw_block);
     rbuf_init(rb, raw_block, read_size);
 
@@ -1714,6 +1735,7 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
     sb_node_info.compressed_size = rbuf_int(rb);
     sb_node_info.uncompressed_size = rbuf_int(rb);
     if (rb->size - rb->ndone < sb_node_info.compressed_size + 8) {
+#if 1
         fprintf(
             stderr,
             "%s:%d:deserialize_ftnode_header_from_rbuf_if_small_enough - "
@@ -1727,6 +1749,7 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
             rb->ndone,
             sb_node_info.compressed_size);
         dump_bad_block(rb->buf, rb->size);
+#endif
         r = toku_db_badformat();
         goto cleanup;
     }
@@ -2902,7 +2925,7 @@ int toku_serialize_rollback_log_to(int fd,
     // Dirties the ft
     DISKOFF offset;
     ft->blocktable.realloc_on_disk(
-        blocknum, n_to_write, &offset, ft, fd, for_checkpoint);
+        blocknum, n_to_write, &offset, (DISKOFF)-3, ft, fd, for_checkpoint);
 
     toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
     toku_free(compressed_buf);

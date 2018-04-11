@@ -125,6 +125,7 @@ class block_table {
     void realloc_on_disk(BLOCKNUM b,
                          DISKOFF size,
                          DISKOFF *offset,
+			 DISKOFF header_size,
                          struct ft *ft,
                          int fd,
                          bool for_checkpoint);
@@ -132,6 +133,8 @@ class block_table {
     void translate_blocknum_to_offset_size(BLOCKNUM b,
                                            DISKOFF *offset,
                                            DISKOFF *size);
+    void translate_blocknum_to_headersize(BLOCKNUM b,
+					  DISKOFF * header);
     void free_unused_blocknums(BLOCKNUM root);
     void realloc_descriptor_on_disk(DISKOFF size,
                                     DISKOFF *offset,
@@ -186,6 +189,7 @@ class block_table {
 
         // Set to 0xFFFFFFFFFFFFFFFF for free
         DISKOFF size;
+	DISKOFF header_size;
     };
 
     // This is the BTT (block translation table)
@@ -249,6 +253,7 @@ class block_table {
     void _realloc_on_disk_internal(BLOCKNUM b,
                                    DISKOFF size,
                                    DISKOFF *offset,
+				   DISKOFF header_size,
                                    struct ft *ft,
                                    bool for_checkpoint);
     void _translate_blocknum_to_offset_size_unlocked(BLOCKNUM b,

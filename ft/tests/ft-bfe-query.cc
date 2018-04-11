@@ -399,7 +399,7 @@ static void test_prefetching(void) {
     {
         DISKOFF offset;
         DISKOFF size;
-        ft_h->blocktable.realloc_on_disk(b, 100, &offset, ft_h, fd, false);
+        ft_h->blocktable.realloc_on_disk(b, 100, &offset, (DISKOFF)(-3), ft_h, fd, false);
         invariant(offset ==
                (DISKOFF)BlockAllocator::BLOCK_ALLOCATOR_TOTAL_HEADER_RESERVE);
 
