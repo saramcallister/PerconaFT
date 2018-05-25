@@ -139,8 +139,8 @@ doit (void) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 3);
+    assert(node->height() == 1);
+    assert(node->n_children() == 3);
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
     assert(toku_bnc_nbytesinbuf(BNC(node, 1)) > 0);
     assert(toku_bnc_nbytesinbuf(BNC(node, 2)) > 0);
@@ -168,8 +168,8 @@ doit (void) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 3);
+    assert(node->height() == 1);
+    assert(node->n_children() == 3);
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
     assert(toku_bnc_nbytesinbuf(BNC(node, 1)) == 0);
     assert(toku_bnc_nbytesinbuf(BNC(node, 2)) > 0);

@@ -180,8 +180,8 @@ static void doit() {
   toku_pin_ftnode_with_dep_nodes(
       ft->ft, node_internal, toku_cachetable_hash(ft->ft->cf, node_internal),
       &bfe, PL_WRITE_EXPENSIVE, 0, NULL, &node, true);
-  assert(node->height == 1);
-  assert(node->n_children == 1);
+  assert(node->height() == 1);
+  assert(node->n_children() == 1);
 
   struct flusher_advice fa;
   flusher_advice_init(&fa, child_to_flush, destroy_bn,

@@ -252,14 +252,14 @@ void toku_note_deserialized_basement_node(bool fixed_key_size) {
 }
 
 static void ft_verify_flags(FT UU(ft), FTNODE UU(node)) {
-    paranoid_invariant(ft->h->flags == node->flags);
+    paranoid_invariant(ft->h->flags == node->flags());
 }
 
 int toku_ft_debug_mode = 0;
 
 uint32_t compute_child_fullhash (CACHEFILE cf, FTNODE node, int childnum) {
-    paranoid_invariant(node->height>0);
-    paranoid_invariant(childnum<node->n_children);
+    paranoid_invariant(node->height()>0);
+    paranoid_invariant(childnum<node->n_children());
     return toku_cachetable_hash(cf, BP_BLOCKNUM(node, childnum));
 }
 
@@ -293,15 +293,15 @@ DBT pivot_bounds::_prepivotkey(FTNODE node, int childnum, const DBT &lbe_dbt) co
     if (childnum == 0) {
         return lbe_dbt;
     } else {
-        return node->pivotkeys.get_pivot(childnum - 1);
+        return node->pivotkeys().get_pivot(childnum - 1);
     }
 }
 
 DBT pivot_bounds::_postpivotkey(FTNODE node, int childnum, const DBT &ubi_dbt) const {
-    if (childnum + 1 == node->n_children) {
+    if (childnum + 1 == node->n_children()) {
         return ubi_dbt;
     } else {
-        return node->pivotkeys.get_pivot(childnum);
+        return node->pivotkeys().get_pivot(childnum);
     }
 }
 
@@ -313,18 +313,18 @@ pivot_bounds pivot_bounds::next_bounds(FTNODE node, int childnum) const {
 ////////////////////////////////////////////////////////////////////////////////
 
 static long get_avail_internal_node_partition_size(FTNODE node, int i) {
-    paranoid_invariant(node->height > 0);
+    paranoid_invariant(node->height() > 0);
     return toku_bnc_memory_size(BNC(node, i));
 }
 
 static long ftnode_cachepressure_size(FTNODE node) {
     long retval = 0;
     bool totally_empty = true;
-    if (node->height == 0) {
+    if (node->height() == 0) {
         goto exit;
     }
     else {
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BP_STATE(node,i) == PT_INVALID || BP_STATE(node,i) == PT_ON_DISK) {
                 continue;
             }
@@ -355,10 +355,10 @@ ftnode_memory_size (FTNODE node)
 // Effect: Estimate how much main memory a node requires.
 {
     long retval = 0;
-    int n_children = node->n_children;
+    int n_children = node->n_children();
     retval += sizeof(*node);
-    retval += (n_children)*(sizeof(node->bp[0]));
-    retval += node->pivotkeys.total_size();
+    retval += (n_children)*(sizeof((node->bp())[0]));
+    retval += node->pivotkeys().total_size();
 
     // now calculate the sizes of the partitions
     for (int i = 0; i < n_children; i++) {
@@ -371,7 +371,7 @@ ftnode_memory_size (FTNODE node)
             retval += sb->compressed_size;
         }
         else if (BP_STATE(node,i) == PT_AVAIL) {
-            if (node->height > 0) {
+            if (node->height() > 0) {
                 retval += get_avail_internal_node_partition_size(node, i);
             }
             else {
@@ -392,8 +392,8 @@ PAIR_ATTR make_ftnode_pair_attr(FTNODE node) {
     long cachepressure_size = ftnode_cachepressure_size(node);
     PAIR_ATTR result={
         .size = size,
-        .nonleaf_size = (node->height > 0) ? size : 0,
-        .leaf_size = (node->height > 0) ? 0 : size,
+        .nonleaf_size = (node->height() > 0) ? size : 0,
+        .leaf_size = (node->height() > 0) ? 0 : size,
         .rollback_size = 0,
         .cache_pressure_size = cachepressure_size,
         .is_valid = true
@@ -546,7 +546,7 @@ int ftnode_fetch_extra::rightmost_child_wanted(FTNODE node) const {
                        type == ftnode_fetch_prefetch ||
                        type == ftnode_fetch_keymatch);
     if (right_is_pos_infty) {
-        return node->n_children - 1;
+        return node->n_children() - 1;
     } else if (range_lock_right_key.data == nullptr) {
         return -1;
     } else {
@@ -558,7 +558,7 @@ static int
 ft_cursor_rightmost_child_wanted(FT_CURSOR cursor, FT_HANDLE ft_handle, FTNODE node)
 {
     if (cursor->right_is_pos_infty) {
-        return node->n_children - 1;
+        return node->n_children() - 1;
     } else if (cursor->range_lock_right_key.data == nullptr) {
         return -1;
     } else {
@@ -568,9 +568,9 @@ ft_cursor_rightmost_child_wanted(FT_CURSOR cursor, FT_HANDLE ft_handle, FTNODE n
 
 STAT64INFO_S
 toku_get_and_clear_basement_stats(FTNODE leafnode) {
-    invariant(leafnode->height == 0);
+    invariant(leafnode->height() == 0);
     STAT64INFO_S deltas = ZEROSTATS;
-    for (int i = 0; i < leafnode->n_children; i++) {
+    for (int i = 0; i < leafnode->n_children(); i++) {
         BASEMENTNODE bn = BLB(leafnode, i);
         invariant(BP_STATE(leafnode,i) == PT_AVAIL);
         deltas.numrows  += bn->stat64_delta.numrows;
@@ -583,7 +583,7 @@ toku_get_and_clear_basement_stats(FTNODE leafnode) {
 void toku_ft_status_update_flush_reason(FTNODE node, 
         uint64_t uncompressed_bytes_flushed, uint64_t bytes_written,
         tokutime_t write_time, bool for_checkpoint) {
-    if (node->height == 0) {
+    if (node->height() == 0) {
         if (for_checkpoint) {
             FT_STATUS_INC(FT_DISK_FLUSH_LEAF_FOR_CHECKPOINT, 1);
             FT_STATUS_INC(FT_DISK_FLUSH_LEAF_BYTES_FOR_CHECKPOINT, bytes_written);
@@ -615,8 +615,8 @@ void toku_ft_status_update_flush_reason(FTNODE node,
 
 void toku_ftnode_checkpoint_complete_callback(void *value_data) {
     FTNODE node = static_cast<FTNODE>(value_data);
-    if (node->height > 0) {
-        for (int i = 0; i < node->n_children; ++i) {
+    if (node->height() > 0) {
+        for (int i = 0; i < node->n_children(); ++i) {
             if (BP_STATE(node, i) == PT_AVAIL) {
                 NONLEAF_CHILDINFO bnc = BNC(node, i);
                 bnc->flow[1] = bnc->flow[0];
@@ -636,33 +636,33 @@ void toku_ftnode_clone_callback(void *value_data,
     toku_ftnode_assert_fully_in_memory(node);
     FT ft = static_cast<FT>(write_extraargs);
     FTNODE XCALLOC(cloned_node);
-    if (node->height == 0) {
+    if (node->height() == 0) {
         // set header stats, must be done before rebalancing
         toku_ftnode_update_disk_stats(node, ft, for_checkpoint);
         // rebalance the leaf node
         toku_ftnode_leaf_rebalance(node, ft->h->basementnodesize);
     }
 
-    cloned_node->oldest_referenced_xid_known =
-        node->oldest_referenced_xid_known;
-    cloned_node->max_msn_applied_to_node_on_disk =
-        node->max_msn_applied_to_node_on_disk;
-    cloned_node->flags = node->flags;
-    cloned_node->blocknum = node->blocknum;
-    cloned_node->layout_version = node->layout_version;
-    cloned_node->layout_version_original = node->layout_version_original;
-    cloned_node->layout_version_read_from_disk =
-        node->layout_version_read_from_disk;
-    cloned_node->build_id = node->build_id;
-    cloned_node->height = node->height;
-    cloned_node->dirty = node->dirty;
-    cloned_node->fullhash = node->fullhash;
-    cloned_node->n_children = node->n_children;
+    cloned_node->oldest_referenced_xid_known() =
+        node->oldest_referenced_xid_known();
+    cloned_node->max_msn_applied_to_node_on_disk() =
+        node->max_msn_applied_to_node_on_disk();
+    cloned_node->flags() = node->flags();
+    cloned_node->blocknum() = node->blocknum();
+    cloned_node->layout_version() = node->layout_version();
+    cloned_node->layout_version_original() = node->layout_version_original();
+    cloned_node->layout_version_read_from_disk() =
+        node->layout_version_read_from_disk();
+    cloned_node->build_id() = node->build_id();
+    cloned_node->height() = node->height();
+    cloned_node->dirty() = node->dirty();
+    cloned_node->fullhash() = node->fullhash();
+    cloned_node->n_children() = node->n_children();
 
-    XMALLOC_N(node->n_children, cloned_node->bp);
+    XMALLOC_N(node->n_children(), cloned_node->bp());
     // clone pivots
-    cloned_node->pivotkeys.create_from_pivot_keys(node->pivotkeys);
-    if (node->height > 0) {
+    cloned_node->pivotkeys().create_from_pivot_keys(node->pivotkeys());
+    if (node->height() > 0) {
         // need to move messages here so that we don't serialize stale
         // messages to the fresh tree - ft verify code complains otherwise.
         toku_move_ftnode_messages_to_stale(ft, node);
@@ -671,13 +671,13 @@ void toku_ftnode_clone_callback(void *value_data,
     toku_ftnode_clone_partitions(node, cloned_node);
 
     // clear dirty bit
-    node->dirty = 0;
-    cloned_node->dirty = 0;
-    node->layout_version_read_from_disk = FT_LAYOUT_VERSION;
+    node->dirty() = 0;
+    cloned_node->dirty() = 0;
+    node->layout_version_read_from_disk() = FT_LAYOUT_VERSION;
     // set new pair attr if necessary
-    if (node->height == 0) {
+    if (node->height() == 0) {
         *new_attr = make_ftnode_pair_attr(node);
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BP_STATE(node, i) == PT_AVAIL) {
                 BLB_LRD(node, i) = 0;
                 BLB_LRD(cloned_node, i) = 0;
@@ -705,8 +705,8 @@ void toku_ftnode_flush_callback(CACHEFILE UU(cachefile),
     FT ft = (FT)extraargs;
     FTNODE ftnode = (FTNODE)ftnode_v;
     FTNODE_DISK_DATA *ndd = (FTNODE_DISK_DATA *)disk_data;
-    assert(ftnode->blocknum.b == blocknum.b);
-    int height = ftnode->height;
+    assert(ftnode->blocknum().b == blocknum.b);
+    int height = ftnode()->height;
     if (write_me) {
         toku_ftnode_assert_fully_in_memory(ftnode);
         if (height > 0 && !is_clone) {
@@ -720,14 +720,14 @@ void toku_ftnode_flush_callback(CACHEFILE UU(cachefile),
             }
         }
         int r = toku_serialize_ftnode_to(
-            fd, ftnode->blocknum, ftnode, ndd, !is_clone, ft, for_checkpoint);
+            fd, ftnode->blocknum(), ftnode, ndd, !is_clone, ft, for_checkpoint);
         assert_zero(r);
-        ftnode->layout_version_read_from_disk = FT_LAYOUT_VERSION;
+        ftnode->layout_version_read_from_disk() = FT_LAYOUT_VERSION;
     }
     if (!keep_me) {
         if (!is_clone) {
             long node_size = ftnode_memory_size(ftnode);
-            if (ftnode->height == 0) {
+            if (ftnode->height() == 0) {
                 FT_STATUS_INC(FT_FULL_EVICTIONS_LEAF, 1);
                 FT_STATUS_INC(FT_FULL_EVICTIONS_LEAF_BYTES, node_size);
 
@@ -741,9 +741,9 @@ void toku_ftnode_flush_callback(CACHEFILE UU(cachefile),
                 // persisted, we need undo the logical row count adjustments as
                 // they may occur again in the future if/when the node is
                 // re-read from disk for another query or change.
-                if (!ftnode->dirty && !write_me) {
+                if (!ftnode->dirty() && !write_me) {
                     int64_t lrc_delta = 0;
-                    for (int i = 0; i < ftnode->n_children; i++) {
+                    for (int i = 0; i < ftnode->n_children(); i++) {
                         if (BP_STATE(ftnode, i) == PT_AVAIL) {
                             lrc_delta -= BLB_LRD(ftnode, i);
                             BLB_LRD(ftnode, i) = 0;
@@ -757,13 +757,13 @@ void toku_ftnode_flush_callback(CACHEFILE UU(cachefile),
             }
             toku_free(*disk_data);
         } else {
-            if (ftnode->height == 0) {
+            if (ftnode->height() == 0) {
                 // No need to adjust logical row counts when flushing a clone
                 // as they should have been zeroed out anyway when cloned.
                 // Clones are 'copies' of work already done so doing it again
                 // (adjusting row counts) would be redundant and leads to
                 // inaccurate counts.
-                for (int i = 0; i < ftnode->n_children; i++) {
+                for (int i = 0; i < ftnode->n_children(); i++) {
                     if (BP_STATE(ftnode, i) == PT_AVAIL) {
                         BASEMENTNODE bn = BLB(ftnode, i);
                         toku_ft_decrease_stats(&ft->in_memory_stats,
@@ -869,8 +869,8 @@ void toku_ftnode_pe_est_callback(
     paranoid_invariant(ftnode_pv != NULL);
     long bytes_to_free = 0;
     FTNODE node = static_cast<FTNODE>(ftnode_pv);
-    if (node->dirty || node->height == 0 ||
-        node->layout_version_read_from_disk < FT_FIRST_LAYOUT_VERSION_WITH_BASEMENT_NODES) {
+    if (node->dirty() || node->height() == 0 ||
+        node->layout_version_read_from_disk() < FT_FIRST_LAYOUT_VERSION_WITH_BASEMENT_NODES) {
         *bytes_freed_estimate = 0;
         *cost = PE_CHEAP;
         goto exit;
@@ -883,7 +883,7 @@ void toku_ftnode_pe_est_callback(
     // now lets get an estimate for how much data we can free up
     // we estimate the compressed size of data to be how large
     // the compressed data is on disk
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         if (BP_STATE(node,i) == PT_AVAIL && BP_SHOULD_EVICT(node,i)) {
             // calculate how much data would be freed if
             // we compress this node and add it to
@@ -916,7 +916,7 @@ static void compress_internal_node_partition(FTNODE node, int i, enum toku_compr
     // if we should evict, compress the
     // message buffer into a sub_block
     assert(BP_STATE(node, i) == PT_AVAIL);
-    assert(node->height > 0);
+    assert(node->height() > 0);
     SUB_BLOCK XMALLOC(sb);
     sub_block_init(sb);
     toku_create_compressed_partition_from_available(node, i, compression_method, sb);
@@ -941,25 +941,25 @@ int toku_ftnode_pe_callback(void *ftnode_pv,
     int num_basements_to_destroy = 0;
     int num_buffers_to_destroy = 0;
     int num_pointers_to_free = 0;
-    BASEMENTNODE basements_to_destroy[node->n_children];
-    NONLEAF_CHILDINFO buffers_to_destroy[node->n_children];
-    void *pointers_to_free[node->n_children * 2];
+    BASEMENTNODE basements_to_destroy[node->n_children()];
+    NONLEAF_CHILDINFO buffers_to_destroy[node->n_children()];
+    void *pointers_to_free[node->n_children() * 2];
 
     // Don't partially evict dirty nodes
-    if (node->dirty) {
+    if (node->dirty()) {
         goto exit;
     }
     // Don't partially evict nodes whose partitions can't be read back
     // from disk individually
-    if (node->layout_version_read_from_disk <
+    if (node->layout_version_read_from_disk() <
         FT_FIRST_LAYOUT_VERSION_WITH_BASEMENT_NODES) {
         goto exit;
     }
     //
     // partial eviction for nonleaf nodes
     //
-    if (node->height > 0) {
-        for (int i = 0; i < node->n_children; i++) {
+    if (node->height() > 0) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BP_STATE(node, i) == PT_AVAIL) {
                 if (BP_SHOULD_EVICT(node, i)) {
                     NONLEAF_CHILDINFO bnc = BNC(node, i);
@@ -974,8 +974,8 @@ int toku_ftnode_pe_callback(void *ftnode_pv,
                         // Breaking this rule would cause upgrade code to
                         // upgrade this partition again after we serialize it as
                         // the current version, which is bad.
-                        node->layout_version ==
-                            node->layout_version_read_from_disk) {
+                        node->layout_version() ==
+                            node->layout_version_read_from_disk()) {
                         toku_ft_bnc_move_messages_to_stale(ft, bnc);
                         compress_internal_node_partition(
                             node,
@@ -1005,7 +1005,7 @@ int toku_ftnode_pe_callback(void *ftnode_pv,
         //  else: check if it requires eviction, if it does, evict it, if not,
         //  sweep the clock count
         //
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             // Get rid of compressed stuff no matter what.
             if (BP_STATE(node, i) == PT_COMPRESSED) {
                 SUB_BLOCK sb = BSB(node, i);
@@ -1046,7 +1046,7 @@ int toku_ftnode_pe_callback(void *ftnode_pv,
 
 exit:
     // call the finalize callback with a new pair attr
-    int height = node->height;
+    int height = node->height();
     PAIR_ATTR new_attr = make_ftnode_pair_attr(node);
     finalize(new_attr, finalize_extra);
 
@@ -1082,7 +1082,7 @@ exit:
 // We need a function to have something a drd suppression can reference
 // see src/tests/drd.suppressions (unsafe_touch_clock)
 static void unsafe_touch_clock(FTNODE node, int i) {
-    toku_unsafe_set(&node->bp[i].clock_count, static_cast<unsigned char>(1));
+    toku_unsafe_set(&(node->bp())[i].clock_count, static_cast<unsigned char>(1));
 }
 
 // Callback that states if a partial fetch of the node is necessary
@@ -1112,7 +1112,7 @@ bool toku_ftnode_pf_req_callback(void* ftnode_pv, void* read_extraargs) {
     }
     else if (bfe->type == ftnode_fetch_all) {
         retval = false;
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             unsafe_touch_clock(node,i);
             // if we find a partition that is not available,
             // then a partial fetch is required because
@@ -1155,7 +1155,7 @@ bool toku_ftnode_pf_req_callback(void* ftnode_pv, void* read_extraargs) {
         // we can possibly require is a single basement node
         // we find out what basement node the query cares about
         // and check if it is available
-        if (node->height == 0) {
+        if (node->height() == 0) {
             int left_child = bfe->leftmost_child_wanted(node);
             int right_child = bfe->rightmost_child_wanted(node);
             if (left_child == right_child) {
@@ -1254,7 +1254,7 @@ ft_status_update_partial_fetch_reason(
 }
 
 void toku_ft_status_update_serialize_times(FTNODE node, tokutime_t serialize_time, tokutime_t compress_time) {
-    if (node->height == 0) {
+    if (node->height() == 0) {
         FT_STATUS_INC(FT_LEAF_SERIALIZE_TOKUTIME, serialize_time);
         FT_STATUS_INC(FT_LEAF_COMPRESS_TOKUTIME, compress_time);
     } else {
@@ -1264,7 +1264,7 @@ void toku_ft_status_update_serialize_times(FTNODE node, tokutime_t serialize_tim
 }
 
 void toku_ft_status_update_deserialize_times(FTNODE node, tokutime_t deserialize_time, tokutime_t decompress_time) {
-    if (node->height == 0) {
+    if (node->height() == 0) {
         FT_STATUS_INC(FT_LEAF_DESERIALIZE_TOKUTIME, deserialize_time);
         FT_STATUS_INC(FT_LEAF_DECOMPRESS_TOKUTIME, decompress_time);
     } else {
@@ -1323,7 +1323,7 @@ int toku_ftnode_pf_callback(void* ftnode_pv, void* disk_data, void* read_extraar
         lc = -1;
         rc = -1;
     }
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         if (BP_STATE(node,i) == PT_AVAIL) {
             continue;
         }
@@ -1335,7 +1335,7 @@ int toku_ftnode_pf_callback(void* ftnode_pv, void* disk_data, void* read_extraar
                 invariant(state == PT_ON_DISK);
                 r = toku_deserialize_bp_from_disk(node, ndd, i, fd, bfe);
             }
-            ft_status_update_partial_fetch_reason(bfe, i, state, (node->height == 0));
+            ft_status_update_partial_fetch_reason(bfe, i, state, (node->height() == 0));
         }
 
         if (r != 0) {
@@ -1445,17 +1445,17 @@ static void inject_message_in_locked_node(
     // TODO(leif): Implement "do I have the lock or is it someone else?"
     // check in frwlock.  Should be possible with TOKU_PTHREAD_DEBUG, nop
     // otherwise.
-    invariant(toku_ctpair_is_write_locked(node->ct_pair));
+    invariant(toku_ctpair_is_write_locked(node->ct_pair()));
     toku_ftnode_assert_fully_in_memory(node);
 
     // Take the newer of the two oldest referenced xid values from the node and gc_info.
     // The gc_info usually has a newer value, because we got it at the top of this call
     // stack from the txn manager. But sometimes the node has a newer value, if some
     // other thread sees a newer value and writes to this node before we got the lock.
-    if (gc_info->oldest_referenced_xid_for_implicit_promotion > node->oldest_referenced_xid_known) {
-        node->oldest_referenced_xid_known = gc_info->oldest_referenced_xid_for_implicit_promotion;
-    } else if (gc_info->oldest_referenced_xid_for_implicit_promotion < node->oldest_referenced_xid_known) {
-        gc_info->oldest_referenced_xid_for_implicit_promotion = node->oldest_referenced_xid_known;
+    if (gc_info->oldest_referenced_xid_for_implicit_promotion > node->oldest_referenced_xid_known()) {
+        node->oldest_referenced_xid_known() = gc_info->oldest_referenced_xid_for_implicit_promotion;
+    } else if (gc_info->oldest_referenced_xid_for_implicit_promotion < node->oldest_referenced_xid_known()) {
+        gc_info->oldest_referenced_xid_for_implicit_promotion = node->oldest_referenced_xid_known();
     }
 
     // Get the MSN from the header.  Now that we have a write lock on the
@@ -1463,7 +1463,7 @@ static void inject_message_in_locked_node(
     // after us and get that message into our subtree before us.
     MSN msg_msn = { .msn = toku_sync_add_and_fetch(&ft->h->max_msn_in_ft.msn, 1) };
     ft_msg msg_with_msn(msg.kdbt(), msg.vdbt(), msg.type(), msg_msn, msg.xids());
-    paranoid_invariant(msg_with_msn.msn().msn > node->max_msn_applied_to_node_on_disk.msn);
+    paranoid_invariant(msg_with_msn.msn().msn > node->max_msn_applied_to_node_on_disk.msn());
 
     STAT64INFO_S stats_delta = { 0,0 };
     int64_t logical_rows_delta = 0;
@@ -1487,10 +1487,10 @@ static void inject_message_in_locked_node(
     // mark the node as dirty.
     // enforcing invariant here.
     //
-    paranoid_invariant(node->dirty != 0);
+    paranoid_invariant(node->dirty() != 0);
 
     // update some status variables
-    if (node->height != 0) {
+    if (node->height() != 0) {
         size_t msgsize = msg.total_size();
         FT_STATUS_INC(FT_MSG_BYTES_IN, msgsize);
         FT_STATUS_INC(FT_MSG_BYTES_CURR, msgsize);
@@ -1501,9 +1501,9 @@ static void inject_message_in_locked_node(
     }
 
     // verify that msn of latest message was captured in root node
-    paranoid_invariant(msg_with_msn.msn().msn == node->max_msn_applied_to_node_on_disk.msn);
+    paranoid_invariant(msg_with_msn.msn().msn == node->max_msn_applied_to_node_on_disk().msn);
 
-    if (node->blocknum.b == ft->rightmost_blocknum.b) {
+    if (node->blocknum().b == ft->rightmost_blocknum.b) {
         if (toku_unsafe_fetch(&ft->seqinsert_score) < FT_SEQINSERT_SCORE_THRESHOLD) {
             // we promoted to the rightmost leaf node and the seqinsert score has not yet saturated.
             toku_sync_fetch_and_add(&ft->seqinsert_score, 1);
@@ -1515,7 +1515,7 @@ static void inject_message_in_locked_node(
 
     // if we call toku_ft_flush_some_child, then that function unpins the root
     // otherwise, we unpin ourselves
-    if (node->height > 0 && toku_ftnode_nonleaf_is_gorged(node, ft->h->nodesize)) {
+    if (node->height() > 0 && toku_ftnode_nonleaf_is_gorged(node, ft->h->nodesize)) {
         toku_ft_flush_node_on_background_thread(ft, node);
     }
     else {
@@ -1654,7 +1654,7 @@ static void inject_message_at_this_blocknum(FT ft, CACHEKEY cachekey, uint32_t f
     bfe.create_for_full_read(ft);
     toku_pin_ftnode(ft, cachekey, fullhash, &bfe, PL_WRITE_CHEAP, &node, true);
     toku_ftnode_assert_fully_in_memory(node);
-    paranoid_invariant(node->fullhash==fullhash);
+    paranoid_invariant(node->fullhash() ==fullhash);
     ft_verify_flags(ft, node);
     inject_message_in_locked_node(ft, node, -1, msg, flow_deltas, gc_info);
 }
@@ -1940,7 +1940,7 @@ void toku_ft_root_put_msg(
     // get the root node
     toku_pin_ftnode(ft, root_key, fullhash, &bfe, lock_type, &node, true);
     toku_ftnode_assert_fully_in_memory(node);
-    paranoid_invariant(node->fullhash==fullhash);
+    paranoid_invariant(node->fullhash() ==fullhash);
     ft_verify_flags(ft, node);
 
     // First handle a reactive root.
@@ -1991,19 +1991,19 @@ void toku_ft_root_put_msg(
     // anyway.
 
     // Now, either inject here or promote.  We decide based on a heuristic:
-    if (node->height == 0 || !ft_msg_type_applies_once(msg.type())) {
+    if (node->height() == 0 || !ft_msg_type_applies_once(msg.type())) {
         // If the root's a leaf or we're injecting a broadcast, drop the read lock and inject here.
         toku_unpin_ftnode_read_only(ft, node);
         FT_STATUS_INC(FT_PRO_NUM_ROOT_H0_INJECT, 1);
         inject_message_at_this_blocknum(ft, root_key, fullhash, msg, flow_deltas, gc_info);
-    } else if (node->height > 1) {
+    } else if (node->height() > 1) {
         // If the root's above height 1, we are definitely eligible for promotion.
         push_something_in_subtree(ft, node, -1, msg, flow_deltas, gc_info, 0, LEFT_EXTREME | RIGHT_EXTREME, false);
     } else {
         // The root's height 1.  We may be eligible for promotion here.
         // On the extremes, we want to promote, in the middle, we don't.
         int childnum = toku_ftnode_which_child(node, msg.kdbt(), ft->cmp);
-        if (childnum == 0 || childnum == node->n_children - 1) {
+        if (childnum == 0 || childnum == node->n_children() - 1) {
             // On the extremes, promote.  We know which childnum we're going to, so pass that down too.
             push_something_in_subtree(ft, node, childnum, msg, flow_deltas, gc_info, 0, LEFT_EXTREME | RIGHT_EXTREME, false);
         } else {
@@ -3546,8 +3546,8 @@ unlock_ftnode_fun (void *v) {
     // CT lock is held
     int r = toku_cachetable_unpin_ct_prelocked_no_flush(
         ft_handle->ft->cf,
-        node->ct_pair,
-        (enum cachetable_dirty) node->dirty,
+        node->ct_pair(),
+        (enum cachetable_dirty) node->dirty(),
         x->msgs_applied ? make_ftnode_pair_attr(node) : make_invalid_pair_attr()
         );
     assert_zero(r);
@@ -3567,7 +3567,7 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
 
     // If the current node's height is greater than 1, then its child is an internal node.
     // Therefore, to warm the cache better (#5798), we want to read all the partitions off disk in one shot.
-    bool read_all_partitions = node->height > 1;
+    bool read_all_partitions = node->height() > 1;
     ftnode_fetch_extra bfe;
     bfe.create_for_subset_read(
         ft_handle->ft,
@@ -3635,21 +3635,21 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
 static inline int
 search_which_child_cmp_with_bound(const toku::comparator &cmp, FTNODE node, int childnum,
                                   ft_search *search, DBT *dbt) {
-    return cmp(toku_copyref_dbt(dbt, node->pivotkeys.get_pivot(childnum)), &search->pivot_bound);
+    return cmp(toku_copyref_dbt(dbt, node->pivotkeys().get_pivot(childnum)), &search->pivot_bound);
 }
 
 int
 toku_ft_search_which_child(const toku::comparator &cmp, FTNODE node, ft_search *search) {
-    if (node->n_children <= 1) return 0;
+    if (node->n_children() <= 1) return 0;
 
     DBT pivotkey;
     toku_init_dbt(&pivotkey);
     int lo = 0;
-    int hi = node->n_children - 1;
+    int hi = node->n_children() - 1;
     int mi;
     while (lo < hi) {
         mi = (lo + hi) / 2;
-        node->pivotkeys.fill_pivot(mi, &pivotkey);
+        node->pivotkeys().fill_pivot(mi, &pivotkey);
         // search->compare is really strange, and only works well with a
         // linear search, it makes binary search a pita.
         //
@@ -3675,7 +3675,7 @@ toku_ft_search_which_child(const toku::comparator &cmp, FTNODE node, ft_search *
     // over a bit to get away from what we've already searched
     if (search->pivot_bound.data != nullptr) {
         if (search->direction == FT_SEARCH_LEFT) {
-            while (lo < node->n_children - 1 &&
+            while (lo < node->n_children() - 1 &&
                    search_which_child_cmp_with_bound(cmp, node, lo, search, &pivotkey) <= 0) {
                 // searching left to right, if the comparison says the
                 // current pivot (lo) is left of or equal to our bound,
@@ -3703,9 +3703,9 @@ maybe_search_save_bound(
     ft_search *search)
 {
     int p = (search->direction == FT_SEARCH_LEFT) ? child_searched : child_searched - 1;
-    if (p >= 0 && p < node->n_children-1) {
+    if (p >= 0 && p < node->n_children() -1) {
         toku_destroy_dbt(&search->pivot_bound);
-        toku_clone_dbt(&search->pivot_bound, node->pivotkeys.get_pivot(p));
+        toku_clone_dbt(&search->pivot_bound, node->pivotkeys().get_pivot(p));
     }
 }
 
@@ -3713,7 +3713,7 @@ maybe_search_save_bound(
 static bool search_try_again(FTNODE node, int child_to_search, ft_search *search) {
     bool try_again = false;
     if (search->direction == FT_SEARCH_LEFT) {
-        if (child_to_search < node->n_children-1) {
+        if (child_to_search < node->n_children()-1) {
             try_again = true;
             // if there is a search bound and the bound is within the search pivot then continue the search
             if (search->k_bound) {
@@ -3747,13 +3747,13 @@ ft_search_node(
     int r = 0;
     // assert that we got a valid child_to_search
     invariant(child_to_search >= 0);
-    invariant(child_to_search < node->n_children);
+    invariant(child_to_search < node->n_children());
     //
     // At this point, we must have the necessary partition available to continue the search
     //
     assert(BP_STATE(node,child_to_search) == PT_AVAIL);
     const pivot_bounds next_bounds = bounds.next_bounds(node, child_to_search);
-    if (node->height > 0) {
+    if (node->height() > 0) {
         r = ft_search_child(
             ft_handle,
             node,
@@ -3792,7 +3792,7 @@ ft_search_node(
     // we know that we got DB_NOTFOUND and we have to continue
     assert(r == DB_NOTFOUND);
     // we have a new pivotkey
-    if (node->height == 0) {
+    if (node->height() == 0) {
         // when we run off the end of a basement, try to lock the range up to the pivot. solves #3529
         const DBT *pivot = search->direction == FT_SEARCH_LEFT ? next_bounds.ubi() : // left -> right
                                                                  next_bounds.lbe();  // right -> left
@@ -3890,7 +3890,7 @@ try_again:
             );
     }
 
-    uint tree_height = node->height + 1;  // How high is the tree?  This is the height of the root node plus one (leaf is at height 0).
+    uint tree_height = node->height() + 1;  // How high is the tree?  This is the height of the root node plus one (leaf is at height 0).
 
 
     struct unlock_ftnode_extra unlock_extra   = {ft_handle,node,false};
@@ -4009,7 +4009,7 @@ static void keysrange_in_leaf_partition(FT_HANDLE ft_handle,
 // Treat key_left == NULL as negative infinity
 // Treat key_right == NULL as positive infinity
 {
-    paranoid_invariant(node->height == 0);  // we are in a leaf
+    paranoid_invariant(node->height() == 0);  // we are in a leaf
     paranoid_invariant(!(key_left == NULL && key_right != NULL));
     paranoid_invariant(left_child_number <= right_child_number);
     bool single_basement = left_child_number == right_child_number;
@@ -4088,16 +4088,16 @@ static int toku_ft_keysrange_internal(
         key_left ? toku_ftnode_which_child(node, key_left, ft_handle->ft->cmp)
                  : 0;
     int right_child_number =
-        node->n_children;  // Sentinel that does not equal left_child_number.
+        node->n_children();  // Sentinel that does not equal left_child_number.
     if (may_find_right) {
         right_child_number =
             key_right
                 ? toku_ftnode_which_child(node, key_right, ft_handle->ft->cmp)
-                : node->n_children - 1;
+                : node->n_children() - 1;
     }
 
-    uint64_t rows_per_child = estimated_num_rows / node->n_children;
-    if (node->height == 0) {
+    uint64_t rows_per_child = estimated_num_rows / node->n_children();
+    if (node->height() == 0) {
         keysrange_in_leaf_partition(ft_handle,
                                     node,
                                     key_left,
@@ -4115,10 +4115,10 @@ static int toku_ft_keysrange_internal(
         *less += rows_per_child * left_child_number;
         if (*single_basement_node) {
             *greater +=
-                rows_per_child * (node->n_children - left_child_number - 1);
+                rows_per_child * (node->n_children() - left_child_number - 1);
         } else {
             *middle +=
-                rows_per_child * (node->n_children - left_child_number - 1);
+                rows_per_child * (node->n_children() - left_child_number - 1);
         }
     } else {
         // do the child.
@@ -4175,10 +4175,10 @@ static int toku_ft_keysrange_internal(
                 *less += rows_per_child * left_child_number;
                 if (*single_basement_node) {
                     *greater += rows_per_child *
-                                (node->n_children - left_child_number - 1);
+                                (node->n_children() - left_child_number - 1);
                 } else {
                     *middle += rows_per_child *
-                               (node->n_children - left_child_number - 1);
+                               (node->n_children() - left_child_number - 1);
                 }
 
                 assert(unlockers->locked);
@@ -4432,10 +4432,10 @@ static int get_key_after_bytes_in_child(FT_HANDLE ft_h, FT ft, FTNODE node, UNLO
 static int get_key_after_bytes_in_subtree(FT_HANDLE ft_h, FT ft, FTNODE node, UNLOCKERS unlockers, ANCESTORS ancestors, const pivot_bounds &bounds, ftnode_fetch_extra *bfe, ft_search *search, uint64_t subtree_bytes, const DBT *start_key, uint64_t skip_len, void (*callback)(const DBT *, uint64_t, void *), void *cb_extra, uint64_t *skipped) {
     int r;
     int childnum = toku_ft_search_which_child(ft->cmp, node, search);
-    const uint64_t child_subtree_bytes = subtree_bytes / node->n_children;
-    if (node->height == 0) {
+    const uint64_t child_subtree_bytes = subtree_bytes / node->n_children();
+    if (node->height() == 0) {
         r = DB_NOTFOUND;
-        for (int i = childnum; r == DB_NOTFOUND && i < node->n_children; ++i) {
+        for (int i = childnum; r == DB_NOTFOUND && i < node->n_children(); ++i) {
             // The theory here is that a leaf node could only be very
             // unbalanced if it's dirty, which means all its basements are
             // available.  So if a basement node is available, we should
@@ -4446,9 +4446,9 @@ static int get_key_after_bytes_in_subtree(FT_HANDLE ft_h, FT ft, FTNODE node, UN
                 r = get_key_after_bytes_in_basementnode(ft, BLB(node, i), (i == childnum) ? start_key : nullptr, skip_len, callback, cb_extra, skipped);
             } else {
                 *skipped += child_subtree_bytes;
-                if (*skipped >= skip_len && i < node->n_children - 1) {
+                if (*skipped >= skip_len && i < node->n_children() - 1) {
                     DBT pivot;
-                    callback(node->pivotkeys.fill_pivot(i, &pivot), *skipped, cb_extra);
+                    callback(node->pivotkeys().fill_pivot(i, &pivot), *skipped, cb_extra);
                     r = 0;
                 }
                 // Otherwise, r is still DB_NOTFOUND.  If this is the last
@@ -4461,7 +4461,7 @@ static int get_key_after_bytes_in_subtree(FT_HANDLE ft_h, FT ft, FTNODE node, UN
         }
     } else {
         r = get_key_after_bytes_in_child(ft_h, ft, node, unlockers, ancestors, bounds, bfe, search, childnum, child_subtree_bytes, start_key, skip_len, callback, cb_extra, skipped);
-        for (int i = childnum + 1; r == DB_NOTFOUND && i < node->n_children; ++i) {
+        for (int i = childnum + 1; r == DB_NOTFOUND && i < node->n_children(); ++i) {
             if (*skipped + child_subtree_bytes < skip_len) {
                 *skipped += child_subtree_bytes;
             } else {
@@ -4568,20 +4568,20 @@ toku_dump_ftnode (FILE *file, FT_HANDLE ft_handle, BLOCKNUM blocknum, int depth,
         &node,
         true
         );
-    assert(node->fullhash==fullhash);
+    assert(node->fullhash() ==fullhash);
     fprintf(file, "%*sNode=%p\n", depth, "", node);
 
     fprintf(file, "%*sNode %" PRId64 " height=%d n_children=%d  keyrange=%s %s\n",
-            depth, "", blocknum.b, node->height, node->n_children, (char*)(lorange ? lorange->data : 0), (char*)(hirange ? hirange->data : 0));
+            depth, "", blocknum.b, node->height(), node->n_children(), (char*)(lorange ? lorange->data : 0), (char*)(hirange ? hirange->data : 0));
     {
         int i;
-        for (i=0; i+1< node->n_children; i++) {
+        for (i=0; i+1< node->n_children(); i++) {
             fprintf(file, "%*spivotkey %d =", depth+1, "", i);
-            toku_print_BYTESTRING(file, node->pivotkeys.get_pivot(i).size, (char *) node->pivotkeys.get_pivot(i).data);
+            toku_print_BYTESTRING(file, node->pivotkeys().get_pivot(i).size, (char *) node->pivotkeys().get_pivot(i).data);
             fprintf(file, "\n");
         }
-        for (i=0; i< node->n_children; i++) {
-            if (node->height > 0) {
+        for (i=0; i< node->n_children(); i++) {
+            if (node->height() > 0) {
                 NONLEAF_CHILDINFO bnc = BNC(node, i);
                 fprintf(file, "%*schild %d buffered (%d entries):", depth+1, "", i, toku_bnc_n_entries(bnc));
                 struct print_msg_fn {
@@ -4615,17 +4615,17 @@ toku_dump_ftnode (FILE *file, FT_HANDLE ft_handle, BLOCKNUM blocknum, int depth,
                 fprintf(file, "\n");
             }
         }
-        if (node->height > 0) {
-            for (i=0; i<node->n_children; i++) {
+        if (node->height() > 0) {
+            for (i=0; i<node->n_children(); i++) {
                 fprintf(file, "%*schild %d\n", depth, "", i);
                 if (i>0) {
-                    char *CAST_FROM_VOIDP(key, node->pivotkeys.get_pivot(i - 1).data);
-                    fprintf(file, "%*spivot %d len=%u %u\n", depth+1, "", i-1, node->pivotkeys.get_pivot(i - 1).size, (unsigned)toku_dtoh32(*(int*)key));
+                    char *CAST_FROM_VOIDP(key, node->pivotkeys().get_pivot(i - 1).data);
+                    fprintf(file, "%*spivot %d len=%u %u\n", depth+1, "", i-1, node->pivotkeys().get_pivot(i - 1).size, (unsigned)toku_dtoh32(*(int*)key));
                 }
                 DBT x, y;
                 toku_dump_ftnode(file, ft_handle, BP_BLOCKNUM(node, i), depth+4,
-                                  (i==0) ? lorange : node->pivotkeys.fill_pivot(i - 1, &x),
-                                  (i==node->n_children-1) ? hirange : node->pivotkeys.fill_pivot(i, &y));
+                                  (i==0) ? lorange : node->pivotkeys().fill_pivot(i - 1, &x),
+                                  (i==node->n_children()-1) ? hirange : node->pivotkeys().fill_pivot(i, &y));
             }
         }
     }
@@ -5131,8 +5131,8 @@ int toku_ft_get_fragmentation(FT_HANDLE ft_handle, TOKU_DB_FRAGMENTATION report)
 }
 
 static bool is_empty_fast_iter (FT_HANDLE ft_handle, FTNODE node) {
-    if (node->height > 0) {
-        for (int childnum=0; childnum<node->n_children; childnum++) {
+    if (node->height() > 0) {
+        for (int childnum=0; childnum<node->n_children(); childnum++) {
             if (toku_bnc_nbytesinbuf(BNC(node, childnum)) != 0) {
                 return 0; // it's not empty if there are bytes in buffers
             }
@@ -5161,7 +5161,7 @@ static bool is_empty_fast_iter (FT_HANDLE ft_handle, FTNODE node) {
         return 1;
     } else {
         // leaf:  If the dmt is empty, we are happy.
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BLB_DATA(node, i)->num_klpairs()) {
                 return false;
             }

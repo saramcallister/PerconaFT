@@ -210,10 +210,10 @@ doit (int state) {
     // hack to get merge going
     FTNODE node = NULL;
     toku_pin_node_with_min_bfe(&node, node_leaves[0], t);
-    BLB_SEQINSERT(node, node->n_children-1) = false;
+    BLB_SEQINSERT(node, node->n_children()-1) = false;
     toku_unpin_ftnode(t->ft, node);
     toku_pin_node_with_min_bfe(&node, node_leaves[1], t);
-    BLB_SEQINSERT(node, node->n_children-1) = false;
+    BLB_SEQINSERT(node, node->n_children()-1) = false;
     toku_unpin_ftnode(t->ft, node);
 
     
@@ -228,8 +228,8 @@ doit (int state) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 2);
+    assert(node->height() == 1);
+    assert(node->n_children() == 2);
 
     // do the flush
     toku_ft_flush_some_child(t->ft, node, &fa);
@@ -245,8 +245,8 @@ doit (int state) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 2);
+    assert(node->height() == 1);
+    assert(node->n_children() == 2);
     toku_unpin_ftnode(t->ft, node);
 
     void *ret;
@@ -283,11 +283,11 @@ doit (int state) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(!node->dirty);
+    assert(node->height() == 1);
+    assert(!node->dirty());
     BLOCKNUM left_child, right_child;
 
-    assert(node->n_children == 2);
+    assert(node->n_children() == 2);
     left_child = BP_BLOCKNUM(node,0);
     right_child = BP_BLOCKNUM(node,1);
 
@@ -303,9 +303,9 @@ doit (int state) {
         &node,
         true
         );
-    assert(node->height == 0);
-    assert(!node->dirty);
-    assert(node->n_children == 1);
+    assert(node->height() == 0);
+    assert(!node->dirty());
+    assert(node->n_children() == 1);
     assert(BLB_DATA(node, 0)->num_klpairs() == 2);
     toku_unpin_ftnode(c_ft->ft, node);
     
@@ -318,9 +318,9 @@ doit (int state) {
         &node,
         true
         );
-    assert(node->height == 0);
-    assert(!node->dirty);
-    assert(node->n_children == 1);
+    assert(node->height() == 0);
+    assert(!node->dirty());
+    assert(node->n_children() == 1);
     assert(BLB_DATA(node, 0)->num_klpairs() == 2);
     toku_unpin_ftnode(c_ft->ft, node);
 

@@ -79,13 +79,13 @@ int toku_testsetup_leaf(FT_HANDLE ft_handle, BLOCKNUM *blocknum, int n_children,
     for (int i = 0; i + 1 < n_children; i++) {
         toku_memdup_dbt(&pivotkeys[i], keys[i], keylens[i]);
     }
-    node->pivotkeys.create_from_dbts(pivotkeys, n_children - 1);
+    node->pivotkeys().create_from_dbts(pivotkeys, n_children - 1);
     for (int i = 0; i + 1 < n_children; i++) {
         toku_destroy_dbt(&pivotkeys[i]);
     }
     toku_free(pivotkeys);
 
-    *blocknum = node->blocknum;
+    *blocknum = node->blocknum();
     toku_unpin_ftnode(ft_handle->ft, node);
     return 0;
 }
@@ -103,13 +103,13 @@ int toku_testsetup_nonleaf (FT_HANDLE ft_handle, int height, BLOCKNUM *blocknum,
     for (int i = 0; i + 1 < n_children; i++) {
         toku_memdup_dbt(&pivotkeys[i], keys[i], keylens[i]);
     }
-    node->pivotkeys.create_from_dbts(pivotkeys, n_children - 1);
+    node->pivotkeys().create_from_dbts(pivotkeys, n_children - 1);
     for (int i = 0; i + 1 < n_children; i++) {
         toku_destroy_dbt(&pivotkeys[i]);
     }
     toku_free(pivotkeys);
 
-    *blocknum = node->blocknum;
+    *blocknum = node->blocknum();
     toku_unpin_ftnode(ft_handle->ft, node);
     return 0;
 }
@@ -167,7 +167,7 @@ int toku_testsetup_insert_to_leaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, const
     if (r!=0) return r;
     FTNODE CAST_FROM_VOIDP(node, node_v);
     toku_verify_or_set_counts(node);
-    assert(node->height==0);
+    assert(node->height()==0);
 
     DBT kdbt, vdbt;
     ft_msg msg(
@@ -243,7 +243,7 @@ int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, en
         );
     if (r!=0) return r;
     FTNODE CAST_FROM_VOIDP(node, node_v);
-    assert(node->height>0);
+    assert(node->height()>0);
 
     DBT k;
     int childnum = toku_ftnode_which_child(node, toku_fill_dbt(&k, key, keylen), ft_handle->ft->cmp);
@@ -257,8 +257,8 @@ int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, en
     // Hack to get the test working. The problem is that this test
     // is directly queueing something in a FIFO instead of 
     // using ft APIs.
-    node->max_msn_applied_to_node_on_disk = msn;
-    node->dirty = 1;
+    node->max_msn_applied_to_node_on_disk() = msn;
+    node->dirty() = 1;
     // Also hack max_msn_in_ft
     ft_handle->ft->h->max_msn_in_ft = msn;
 

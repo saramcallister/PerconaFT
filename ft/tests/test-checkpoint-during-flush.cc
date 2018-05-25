@@ -190,8 +190,8 @@ doit (bool after_child_pin) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 1);
+    assert(node->height() == 1);
+    assert(node->n_children() == 1);
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
 
     // do the flush
@@ -208,8 +208,8 @@ doit (bool after_child_pin) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 1);
+    assert(node->height() == 1);
+    assert(node->n_children() == 1);
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
     toku_unpin_ftnode(t->ft, node);
 
@@ -244,9 +244,9 @@ doit (bool after_child_pin) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(!node->dirty);
-    assert(node->n_children == 1);
+    assert(node->height() == 1);
+    assert(!node->dirty());
+    assert(node->n_children() == 1);
     if (after_child_pin) {
         assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
     }
@@ -264,9 +264,9 @@ doit (bool after_child_pin) {
         &node,
         true
         );
-    assert(node->height == 0);
-    assert(!node->dirty);
-    assert(node->n_children == 1);
+    assert(node->height() == 0);
+    assert(!node->dirty());
+    assert(node->n_children() == 1);
     if (after_child_pin) {
         assert(BLB_NBYTESINDATA(node,0) > 0);
     }

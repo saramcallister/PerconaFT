@@ -199,8 +199,8 @@ doit (void) {
         &node,
         true
         );
-    assert(node->dirty);
-    assert(node->n_children == 2);
+    assert(node->dirty());
+    assert(node->n_children() == 2);
     assert(BP_STATE(node,0) == PT_AVAIL);
     assert(BP_STATE(node,1) == PT_AVAIL);
     toku_unpin_ftnode(ft->ft, node);
@@ -229,8 +229,8 @@ doit (void) {
         &node,
         true
         );
-    assert(node->dirty);
-    assert(node->n_children == 2);
+    assert(node->dirty());
+    assert(node->n_children() == 2);
     assert(BP_STATE(node,0) == PT_AVAIL);
     assert(BP_STATE(node,1) == PT_AVAIL);
     toku_unpin_ftnode(ft->ft, node);
@@ -250,7 +250,7 @@ doit (void) {
         &node,
         true
         );
-    assert(node->dirty);
+    assert(node->dirty());
 
     // we expect that this flushes its buffer, that
     // a merge is not done, and that the lookup

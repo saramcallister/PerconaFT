@@ -334,42 +334,42 @@ toku_verify_ftnode_internal(FT_HANDLE ft_handle,
 {
     int result=0;
     MSN   this_msn;
-    BLOCKNUM blocknum = node->blocknum;
+    BLOCKNUM blocknum = node->blocknum();
 
     //printf("%s:%d pin %p\n", __FILE__, __LINE__, node_v);
     toku_ftnode_assert_fully_in_memory(node);
-    this_msn = node->max_msn_applied_to_node_on_disk;
+    this_msn = node->max_msn_applied_to_node_on_disk();
 
     if (height >= 0) {
-        invariant(height == node->height);   // this is a bad failure if wrong
+        invariant(height == node->height());   // this is a bad failure if wrong
     }
-    if (node->height > 0 && messages_exist_above) {
+    if (node->height() > 0 && messages_exist_above) {
         VERIFY_ASSERTION((parentmsn_with_messages.msn >= this_msn.msn), 0, "node msn must be descending down tree, newest messages at top");
     }
     // Verify that all the pivot keys are in order.
-    for (int i = 0; i < node->n_children-2; i++) {
+    for (int i = 0; i < node->n_children()-2; i++) {
         DBT x, y;
-        int compare = compare_pairs(ft_handle, node->pivotkeys.fill_pivot(i, &x), node->pivotkeys.fill_pivot(i + 1, &y));
+        int compare = compare_pairs(ft_handle, node->pivotkeys().fill_pivot(i, &x), node->pivotkeys().fill_pivot(i + 1, &y));
         VERIFY_ASSERTION(compare < 0, i, "Value is >= the next value");
     }
     // Verify that all the pivot keys are lesser_pivot < pivot <= greatereq_pivot
-    for (int i = 0; i < node->n_children-1; i++) {
+    for (int i = 0; i < node->n_children()-1; i++) {
         DBT x;
         if (lesser_pivot) {
-            int compare = compare_pairs(ft_handle, lesser_pivot, node->pivotkeys.fill_pivot(i, &x));
+            int compare = compare_pairs(ft_handle, lesser_pivot, node->pivotkeys().fill_pivot(i, &x));
             VERIFY_ASSERTION(compare < 0, i, "Pivot is >= the lower-bound pivot");
         }
         if (greatereq_pivot) {
-            int compare = compare_pairs(ft_handle, greatereq_pivot, node->pivotkeys.fill_pivot(i, &x));
+            int compare = compare_pairs(ft_handle, greatereq_pivot, node->pivotkeys().fill_pivot(i, &x));
             VERIFY_ASSERTION(compare >= 0, i, "Pivot is < the upper-bound pivot");
         }
     }
 
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         DBT x, y;
-        const DBT *curr_less_pivot = (i==0) ? lesser_pivot : node->pivotkeys.fill_pivot(i - 1, &x);
-        const DBT *curr_geq_pivot = (i==node->n_children-1) ? greatereq_pivot : node->pivotkeys.fill_pivot(i, &y);
-        if (node->height > 0) {
+        const DBT *curr_less_pivot = (i==0) ? lesser_pivot : node->pivotkeys().fill_pivot(i - 1, &x);
+        const DBT *curr_geq_pivot = (i==node->n_children()-1) ? greatereq_pivot : node->pivotkeys().fill_pivot(i, &y);
+        if (node->height() > 0) {
             NONLEAF_CHILDINFO bnc = BNC(node, i);
             // Verify that messages in the buffers are in the right place.
             VERIFY_ASSERTION(verify_sorted_by_key_msn(ft_handle, &bnc->msg_buffer, bnc->fresh_message_tree) == 0, i, "fresh_message_tree");
@@ -380,7 +380,7 @@ toku_verify_ftnode_internal(FT_HANDLE ft_handle,
             int r = bnc->msg_buffer.iterate(verify_msg);
             if (r != 0) { result = r; goto done; }
 
-            struct verify_message_tree_extra extra = { .msg_buffer = &bnc->msg_buffer, .broadcast = false, .is_fresh = true, .i = i, .verbose = verbose, .blocknum = node->blocknum, .keep_going_on_failure = keep_going_on_failure, .messages_have_been_moved = messages_have_been_moved };
+            struct verify_message_tree_extra extra = { .msg_buffer = &bnc->msg_buffer, .broadcast = false, .is_fresh = true, .i = i, .verbose = verbose, .blocknum = node->blocknum(), .keep_going_on_failure = keep_going_on_failure, .messages_have_been_moved = messages_have_been_moved };
             r = bnc->fresh_message_tree.iterate<struct verify_message_tree_extra, verify_message_tree>(&extra);
             if (r != 0) { result = r; goto done; }
             extra.is_fresh = false;
@@ -443,11 +443,11 @@ toku_verify_ftnode (FT_HANDLE ft_handle,
 
     //printf("%s:%d pin %p\n", __FILE__, __LINE__, node_v);
     toku_ftnode_assert_fully_in_memory(node);
-    this_msn = node->max_msn_applied_to_node_on_disk;
+    this_msn = node->max_msn_applied_to_node_on_disk();
 
     int result = 0;
     int result2 = 0;
-    if (node->height > 0) {
+    if (node->height() > 0) {
         // Otherwise we'll just do the next call
 
         result = toku_verify_ftnode_internal(
@@ -455,7 +455,7 @@ toku_verify_ftnode (FT_HANDLE ft_handle,
                 verbose, keep_going_on_failure, false);
         if (result != 0 && (!keep_going_on_failure || result != TOKUDB_NEEDS_REPAIR)) goto done;
     }
-    if (node->height > 0) {
+    if (node->height() > 0) {
         toku_move_ftnode_messages_to_stale(ft_handle->ft, node);
     }
     result2 = toku_verify_ftnode_internal(
@@ -467,8 +467,8 @@ toku_verify_ftnode (FT_HANDLE ft_handle,
     }
     
     // Verify that the subtrees have the right properties.
-    if (recurse && node->height > 0) {
-        for (int i = 0; i < node->n_children; i++) {
+    if (recurse && node->height() > 0) {
+        for (int i = 0; i < node->n_children(); i++) {
             FTNODE child_node;
             toku_get_node_for_verify(BP_BLOCKNUM(node, i), ft_handle, &child_node);
             DBT x, y;
@@ -477,9 +477,9 @@ toku_verify_ftnode (FT_HANDLE ft_handle,
                                         ? this_msn
                                         : parentmsn_with_messages),
                                        messages_exist_above || toku_bnc_n_entries(BNC(node, i)) > 0,
-                                       child_node, node->height-1,
-                                       (i==0)                  ? lesser_pivot        : node->pivotkeys.fill_pivot(i - 1, &x),
-                                       (i==node->n_children-1) ? greatereq_pivot     : node->pivotkeys.fill_pivot(i, &y),
+                                       child_node, node->height()-1,
+                                       (i==0)                  ? lesser_pivot        : node->pivotkeys().fill_pivot(i - 1, &x),
+                                       (i==node->n_children()-1) ? greatereq_pivot     : node->pivotkeys().fill_pivot(i, &y),
                                        progress_callback, progress_extra,
                                        recurse, verbose, keep_going_on_failure);
             if (r) {

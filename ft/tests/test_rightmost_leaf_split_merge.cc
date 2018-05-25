@@ -97,17 +97,17 @@ static void test_split_merge(void) {
                    toku_cachetable_hash(ft->cf, ft->h->root_blocknum),
                    &bfe, PL_WRITE_EXPENSIVE, &root_node, true);
     // root blocknum should be consistent
-    invariant(root_node->blocknum.b == ft->h->root_blocknum.b);
+    invariant(root_node->blocknum().b == ft->h->root_blocknum.b);
     // root should have split at least once, and it should now be at height 1
-    invariant(root_node->n_children > 1);
-    invariant(root_node->height == 1);
+    invariant(root_node->n_children() > 1);
+    invariant(root_node->height() == 1);
     // rightmost blocknum should no longer be the root, since the root split
     invariant(ft->h->root_blocknum.b != ft->rightmost_blocknum.b);
     // the right child should have the rightmost blocknum
-    invariant(BP_BLOCKNUM(root_node, root_node->n_children - 1).b == ft->rightmost_blocknum.b);
+    invariant(BP_BLOCKNUM(root_node, root_node->n_children() - 1).b == ft->rightmost_blocknum.b);
 
     BLOCKNUM rightmost_blocknum_before_merge = ft->rightmost_blocknum;
-    const int num_children_before_merge = root_node->n_children;
+    const int num_children_before_merge = root_node->n_children();
 
     // delete the last 6 rows.
     // - 1mb each, so 6mb deleted 
@@ -132,16 +132,16 @@ static void test_split_merge(void) {
     toku_unpin_ftnode(ft, rightmost_leaf);
 
     // - merge the rightmost child now that it's fusible
-    toku_ft_merge_child(ft, root_node, root_node->n_children - 1);
+    toku_ft_merge_child(ft, root_node, root_node->n_children() - 1);
     toku_pin_ftnode(ft, root_blocknum,
                    toku_cachetable_hash(ft->cf, root_blocknum),
                    &bfe, PL_WRITE_EXPENSIVE, &root_node, true);
 
     // the merge should have worked, and the root should still be at height 1
-    invariant(root_node->n_children < num_children_before_merge);
-    invariant(root_node->height == 1);
+    invariant(root_node->n_children() < num_children_before_merge);
+    invariant(root_node->height() == 1);
     // the rightmost child of the root has the rightmost blocknum
-    invariant(BP_BLOCKNUM(root_node, root_node->n_children - 1).b == ft->rightmost_blocknum.b);
+    invariant(BP_BLOCKNUM(root_node, root_node->n_children() - 1).b == ft->rightmost_blocknum.b);
     // the value for rightmost blocknum itself should not have changed
     // (we keep it constant, like the root blocknum)
     invariant(rightmost_blocknum_before_merge.b == ft->rightmost_blocknum.b);

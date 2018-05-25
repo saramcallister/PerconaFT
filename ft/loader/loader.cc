@@ -3246,8 +3246,8 @@ static void write_nonleaf_node (FTLOADER bl, struct dbout *out, int64_t blocknum
     FTNODE XMALLOC(node);
     toku_initialize_empty_ftnode(node, make_blocknum(blocknum_of_new_node), height, n_children,
                                   FT_LAYOUT_VERSION, 0);
-    node->pivotkeys.create_from_dbts(pivots, n_children - 1);
-    assert(node->bp);
+    node->pivotkeys().create_from_dbts(pivots, n_children - 1);
+    assert(node->bp());
     for (int i=0; i<n_children; i++) {
         BP_BLOCKNUM(node,i)  = make_blocknum(subtree_info[i].block); 
         BP_STATE(node,i) = PT_AVAIL;
@@ -3286,8 +3286,8 @@ static void write_nonleaf_node (FTLOADER bl, struct dbout *out, int64_t blocknum
     }
     toku_free(pivots);
     // TODO: Should be using toku_destroy_ftnode_internals, which should be renamed to toku_ftnode_destroy
-    toku_free(node->bp);
-    node->pivotkeys.destroy();
+    toku_free(node->bp());
+    node->pivotkeys().destroy();
     toku_free(node);
     toku_free(ndd);
     toku_free(subtree_info);

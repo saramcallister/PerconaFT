@@ -204,8 +204,8 @@ doit (bool after_split) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 1);
+    assert(node->height() == 1);
+    assert(node->n_children() == 1);
 
     // do the flush
     toku_ft_flush_some_child(t->ft, node, &fa);
@@ -221,8 +221,8 @@ doit (bool after_split) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(node->n_children == 2);
+    assert(node->height() == 1);
+    assert(node->n_children() == 2);
     toku_unpin_ftnode(t->ft, node);
 
     void *ret;
@@ -259,17 +259,17 @@ doit (bool after_split) {
         &node,
         true
         );
-    assert(node->height == 1);
-    assert(!node->dirty);
+    assert(node->height() == 1);
+    assert(!node->dirty());
     BLOCKNUM left_child, right_child;
     if (after_split) {
-        assert(node->n_children == 2);
+        assert(node->n_children() == 2);
         left_child = BP_BLOCKNUM(node,0);
         assert(left_child.b == node_leaf.b);
         right_child = BP_BLOCKNUM(node,1);
     }
     else {
-        assert(node->n_children == 1);
+        assert(node->n_children() == 1);
         left_child = BP_BLOCKNUM(node,0);
         assert(left_child.b == node_leaf.b);
     }
@@ -286,9 +286,9 @@ doit (bool after_split) {
             &node,
             true
             );
-        assert(node->height == 0);
-        assert(!node->dirty);
-        assert(node->n_children == 1);
+        assert(node->height() == 0);
+        assert(!node->dirty());
+        assert(node->n_children() == 1);
         assert(BLB_DATA(node, 0)->num_klpairs() == 1);
         toku_unpin_ftnode(c_ft->ft, node);
 
@@ -301,9 +301,9 @@ doit (bool after_split) {
             &node,
             true
             );
-        assert(node->height == 0);
-        assert(!node->dirty);
-        assert(node->n_children == 1);
+        assert(node->height() == 0);
+        assert(!node->dirty());
+        assert(node->n_children() == 1);
         assert(BLB_DATA(node, 0)->num_klpairs() == 1);
         toku_unpin_ftnode(c_ft->ft, node);
     }
@@ -317,9 +317,9 @@ doit (bool after_split) {
             &node,
             true
             );
-        assert(node->height == 0);
-        assert(!node->dirty);
-        assert(node->n_children == 1);
+        assert(node->height() == 0);
+        assert(!node->dirty());
+        assert(node->n_children() == 1);
         assert(BLB_DATA(node, 0)->num_klpairs() == 2);
         toku_unpin_ftnode(c_ft->ft, node);
     }

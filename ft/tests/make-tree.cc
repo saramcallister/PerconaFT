@@ -61,7 +61,7 @@ make_node(FT_HANDLE ft, int height) {
 
 static void
 append_leaf(FTNODE leafnode, void *key, size_t keylen, void *val, size_t vallen) {
-    assert(leafnode->height == 0);
+    assert(leafnode->height() == 0);
 
     DBT thekey; toku_fill_dbt(&thekey, key, keylen);
     DBT theval; toku_fill_dbt(&theval, val, vallen);
@@ -85,10 +85,10 @@ append_leaf(FTNODE leafnode, void *key, size_t keylen, void *val, size_t vallen)
         NULL,
         NULL);
 
-    leafnode->max_msn_applied_to_node_on_disk = msn;
+    leafnode->max_msn_applied_to_node_on_disk() = msn;
 
     // don't forget to dirty the node
-    leafnode->dirty = 1;
+    leafnode->dirty() = 1;
 }
 
 static void
@@ -110,7 +110,7 @@ insert_into_child_buffer(FT_HANDLE ft, FTNODE node, int childnum, int minkey, in
         DBT thekey; toku_fill_dbt(&thekey, &key, sizeof key);
         DBT theval; toku_fill_dbt(&theval, &val, sizeof val);
         toku_ft_append_to_child_buffer(ft->ft->cmp, node, childnum, FT_INSERT, msn, toku_xids_get_root_xids(), true, &thekey, &theval);
-	node->max_msn_applied_to_node_on_disk = msn;
+	node->max_msn_applied_to_node_on_disk() = msn;
     }
 }
 

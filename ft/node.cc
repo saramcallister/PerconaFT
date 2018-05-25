@@ -87,10 +87,10 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
 // this is common functionality for toku_ftnode_free and rebalance_ftnode_leaf
 // MUST NOT do anything besides free the structures that have been allocated
 void toku_destroy_ftnode_internals(FTNODE node) {
-    node->pivotkeys.destroy();
-    for (int i = 0; i < node->n_children; i++) {
+    node->pivotkeys().destroy();
+    for (int i = 0; i < node->n_children(); i++) {
         if (BP_STATE(node,i) == PT_AVAIL) {
-            if (node->height > 0) {
+            if (node->height() > 0) {
                 destroy_nonleaf_childinfo(BNC(node,i));
             } else {
                 paranoid_invariant(BLB_LRD(node, i) == 0);
@@ -105,14 +105,14 @@ void toku_destroy_ftnode_internals(FTNODE node) {
         }
         set_BNULL(node, i);
     }
-    toku_free(node->bp);
-    node->bp = NULL;
+    toku_free(node->bp());
+    node->bp() = NULL;
 }
 
 /* Frees a node, including all the stuff in the hash table. */
 void toku_ftnode_free(FTNODE *nodep) {
     FTNODE node = *nodep;
-    toku_ft_status_note_ftnode(node->height, false);
+    toku_ft_status_note_ftnode(node->height(), false);
     toku_destroy_ftnode_internals(node);
     toku_free(node);
     *nodep = nullptr;
@@ -138,12 +138,12 @@ void toku_ftnode_update_disk_stats(FTNODE ftnode, FT ft, bool for_checkpoint) {
 }
 
 void toku_ftnode_clone_partitions(FTNODE node, FTNODE cloned_node) {
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         BP_BLOCKNUM(cloned_node,i) = BP_BLOCKNUM(node,i);
         paranoid_invariant(BP_STATE(node,i) == PT_AVAIL);
         BP_STATE(cloned_node,i) = PT_AVAIL;
         BP_WORKDONE(cloned_node, i) = BP_WORKDONE(node, i);
-        if (node->height == 0) {
+        if (node->height() == 0) {
             set_BLB(cloned_node, i, toku_clone_bn(BLB(node,i)));
         } else {
             set_BNC(cloned_node, i, toku_clone_nl(BNC(node,i)));
@@ -153,7 +153,7 @@ void toku_ftnode_clone_partitions(FTNODE node, FTNODE cloned_node) {
 
 void toku_evict_bn_from_memory(FTNODE node, int childnum, FT ft) {
     // free the basement node
-    assert(!node->dirty);
+    assert(!node->dirty());
     BASEMENTNODE bn = BLB(node, childnum);
     toku_ft_decrease_stats(&ft->in_memory_stats, bn->stat64_delta);
     toku_ft_adjust_logical_row_count(ft, -BLB_LRD(node, childnum));
@@ -542,7 +542,7 @@ apply_ancestors_messages_to_bn(
     BASEMENTNODE curr_bn = BLB(node, childnum);
     const pivot_bounds curr_bounds = bounds.next_bounds(node, childnum);
     for (ANCESTORS curr_ancestors = ancestors; curr_ancestors; curr_ancestors = curr_ancestors->next) {
-        if (curr_ancestors->node->max_msn_applied_to_node_on_disk.msn > curr_bn->max_msn_applied.msn) {
+        if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > curr_bn->max_msn_applied.msn) {
             paranoid_invariant(BP_STATE(curr_ancestors->node, curr_ancestors->childnum) == PT_AVAIL);
             bnc_apply_messages_to_basement_node(
                 t,
@@ -555,7 +555,7 @@ apply_ancestors_messages_to_bn(
                 );
             // We don't want to check this ancestor node again if the
             // next time we query it, the msn hasn't changed.
-            curr_bn->max_msn_applied = curr_ancestors->node->max_msn_applied_to_node_on_disk;
+            curr_bn->max_msn_applied = curr_ancestors->node->max_msn_applied_to_node_on_disk();
         }
     }
     // At this point, we know all the stale messages above this
@@ -585,7 +585,7 @@ toku_apply_ancestors_messages_to_node (
 //   The entire root-to-leaf path is pinned and appears in the ancestors list.
 {
     VERIFY_NODE(t, node);
-    paranoid_invariant(node->height == 0);
+    paranoid_invariant(node->height() == 0);
 
     TXN_MANAGER txn_manager = toku_ft_get_txn_manager(t);
     txn_manager_state txn_state_for_gc(txn_manager);
@@ -593,9 +593,9 @@ toku_apply_ancestors_messages_to_node (
     TXNID oldest_referenced_xid_for_simple_gc = toku_ft_get_oldest_referenced_xid_estimate(t);
     txn_gc_info gc_info(&txn_state_for_gc,
                         oldest_referenced_xid_for_simple_gc,
-                        node->oldest_referenced_xid_known,
+                        node->oldest_referenced_xid_known(),
                         true);
-    if (!node->dirty && child_to_read >= 0) {
+    if (!node->dirty() && child_to_read >= 0) {
         paranoid_invariant(BP_STATE(node, child_to_read) == PT_AVAIL);
         apply_ancestors_messages_to_bn(
             t,
@@ -614,7 +614,7 @@ toku_apply_ancestors_messages_to_node (
         // flushing on the cleaner thread depends on this. This invariant
         // allows the cleaner thread to just pick an internal node and flush it
         // as opposed to being forced to start from the root.
-        for (int i = 0; i < node->n_children; i++) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BP_STATE(node, i) != PT_AVAIL) { continue; }
             apply_ancestors_messages_to_bn(
                 t,
@@ -643,7 +643,7 @@ static bool bn_needs_ancestors_messages(
     const pivot_bounds curr_bounds = bounds.next_bounds(node, childnum);
     bool needs_ancestors_messages = false;
     for (ANCESTORS curr_ancestors = ancestors; curr_ancestors; curr_ancestors = curr_ancestors->next) {
-        if (curr_ancestors->node->max_msn_applied_to_node_on_disk.msn > bn->max_msn_applied.msn) {
+        if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > bn->max_msn_applied.msn) {
             paranoid_invariant(BP_STATE(curr_ancestors->node, curr_ancestors->childnum) == PT_AVAIL);
             NONLEAF_CHILDINFO bnc = BNC(curr_ancestors->node, curr_ancestors->childnum);
             if (bnc->broadcast_list.size() > 0) {
@@ -674,8 +674,8 @@ static bool bn_needs_ancestors_messages(
                 needs_ancestors_messages = true;
                 goto cleanup;
             }
-            if (curr_ancestors->node->max_msn_applied_to_node_on_disk.msn > max_msn_applied->msn) {
-                max_msn_applied->msn = curr_ancestors->node->max_msn_applied_to_node_on_disk.msn;
+            if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > max_msn_applied->msn) {
+                max_msn_applied->msn = curr_ancestors->node->max_msn_applied_to_node_on_disk().msn;
             }
         }
     }
@@ -709,10 +709,10 @@ bool toku_ft_leaf_needs_ancestors_messages(
 //  we should exchange it for a write lock in preparation for applying
 //  messages.  If there are no messages, we don't need the write lock.
 {
-    paranoid_invariant(node->height == 0);
+    paranoid_invariant(node->height() == 0);
     bool needs_ancestors_messages = false;
     // child_to_read may be -1 in test cases
-    if (!node->dirty && child_to_read >= 0) {
+    if (!node->dirty() && child_to_read >= 0) {
         paranoid_invariant(BP_STATE(node, child_to_read) == PT_AVAIL);
         needs_ancestors_messages = bn_needs_ancestors_messages(
             ft,
@@ -724,7 +724,7 @@ bool toku_ft_leaf_needs_ancestors_messages(
             );
     }
     else {
-        for (int i = 0; i < node->n_children; ++i) {
+        for (int i = 0; i < node->n_children(); ++i) {
             if (BP_STATE(node, i) != PT_AVAIL) { continue; }
             needs_ancestors_messages = bn_needs_ancestors_messages(
                 ft,
@@ -744,8 +744,8 @@ cleanup:
 }
 
 void toku_ft_bn_update_max_msn(FTNODE node, MSN max_msn_applied, int child_to_read) {
-    invariant(node->height == 0);
-    if (!node->dirty && child_to_read >= 0) {
+    invariant(node->height() == 0);
+    if (!node->dirty() && child_to_read >= 0) {
         paranoid_invariant(BP_STATE(node, child_to_read) == PT_AVAIL);
         BASEMENTNODE bn = BLB(node, child_to_read);
         if (max_msn_applied.msn > bn->max_msn_applied.msn) {
@@ -754,7 +754,7 @@ void toku_ft_bn_update_max_msn(FTNODE node, MSN max_msn_applied, int child_to_re
         }
     }
     else {
-        for (int i = 0; i < node->n_children; ++i) {
+        for (int i = 0; i < node->n_children(); ++i) {
             if (BP_STATE(node, i) != PT_AVAIL) { continue; }
             BASEMENTNODE bn = BLB(node, i);
             if (max_msn_applied.msn > bn->max_msn_applied.msn) {
@@ -794,8 +794,8 @@ void toku_ft_bnc_move_messages_to_stale(FT ft, NONLEAF_CHILDINFO bnc) {
 }
 
 void toku_move_ftnode_messages_to_stale(FT ft, FTNODE node) {
-    invariant(node->height > 0);
-    for (int i = 0; i < node->n_children; ++i) {
+    invariant(node->height() > 0);
+    for (int i = 0; i < node->n_children(); ++i) {
         if (BP_STATE(node, i) != PT_AVAIL) {
             continue;
         }
@@ -831,10 +831,10 @@ struct rebalance_array_info {
 // buffers above that still need to be applied.)
 void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
 
-    assert(node->height == 0);
-    assert(node->dirty);
+    assert(node->height() == 0);
+    assert(node->dirty());
 
-    uint32_t num_orig_basements = node->n_children;
+    uint32_t num_orig_basements = node->n_children();
     // Count number of leaf entries in this leaf (num_le).
     uint32_t num_le = 0;
     for (uint32_t i = 0; i < num_orig_basements; i++) {
@@ -952,7 +952,7 @@ void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
     // now reallocate pieces and start filling them in
     invariant(num_children > 0);
 
-    node->n_children = num_children;
+    node->n_children() = num_children;
     XCALLOC_N(num_children, node->bp);             // allocate pointers to basements (bp)
     for (int i = 0; i < num_children; i++) {
         set_BLB(node, i, toku_create_empty_bn());  // allocate empty basements and set bp pointers
@@ -968,7 +968,7 @@ void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
         const void *key = key_pointers[new_pivots[i]];
         toku_fill_dbt(&pivotkeys[i], key, size);
     }
-    node->pivotkeys.create_from_dbts(pivotkeys, num_pivots);
+    node->pivotkeys().create_from_dbts(pivotkeys, num_pivots);
 
     uint32_t baseindex_this_bn = 0;
     // now the basement nodes
@@ -1002,7 +1002,7 @@ void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
         BLB_MAX_MSN_APPLIED(node,i) = max_msn;
         baseindex_this_bn += num_les_to_copy;  // set to index of next bn
     }
-    node->max_msn_applied_to_node_on_disk = max_msn;
+    node->max_msn_applied_to_node_on_disk() = max_msn;
 
     // destroy buffers of old mempools
     for (uint32_t i = 0; i < num_orig_basements; i++) {
@@ -1011,7 +1011,7 @@ void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
 }
 
 bool toku_ftnode_fully_in_memory(FTNODE node) {
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         if (BP_STATE(node,i) != PT_AVAIL) {
             return false;
         }
@@ -1026,7 +1026,7 @@ void toku_ftnode_assert_fully_in_memory(FTNODE UU(node)) {
 uint32_t toku_ftnode_leaf_num_entries(FTNODE node) {
     toku_ftnode_assert_fully_in_memory(node);
     uint32_t num_entries = 0;
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         num_entries += BLB_DATA(node, i)->num_klpairs();
     }
     return num_entries;
@@ -1035,19 +1035,19 @@ uint32_t toku_ftnode_leaf_num_entries(FTNODE node) {
 enum reactivity toku_ftnode_get_leaf_reactivity(FTNODE node, uint32_t nodesize) {
     enum reactivity re = RE_STABLE;
     toku_ftnode_assert_fully_in_memory(node);
-    paranoid_invariant(node->height==0);
+    paranoid_invariant(node->height()==0);
     unsigned int size = toku_serialize_ftnode_size(node);
     if (size > nodesize && toku_ftnode_leaf_num_entries(node) > 1) {
         re = RE_FISSIBLE;
-    } else if ((size*4) < nodesize && !BLB_SEQINSERT(node, node->n_children-1)) {
+    } else if ((size*4) < nodesize && !BLB_SEQINSERT(node, node->n_children()-1)) {
         re = RE_FUSIBLE;
     }
     return re;
 }
 
 enum reactivity toku_ftnode_get_nonleaf_reactivity(FTNODE node, unsigned int fanout) {
-    paranoid_invariant(node->height > 0);
-    int n_children = node->n_children;
+    paranoid_invariant(node->height() > 0);
+    int n_children = node->n_children();
     if (n_children > (int) fanout) {
         return RE_FISSIBLE;
     }
@@ -1059,7 +1059,7 @@ enum reactivity toku_ftnode_get_nonleaf_reactivity(FTNODE node, unsigned int fan
 
 enum reactivity toku_ftnode_get_reactivity(FT ft, FTNODE node) {
     toku_ftnode_assert_fully_in_memory(node);
-    if (node->height == 0) {
+    if (node->height() == 0) {
         return toku_ftnode_get_leaf_reactivity(node, ft->h->nodesize);
     } else {
         return toku_ftnode_get_nonleaf_reactivity(node, ft->h->fanout);
@@ -1084,11 +1084,11 @@ bool toku_ftnode_nonleaf_is_gorged(FTNODE node, uint32_t nodesize) {
     //     is greater than nodesize (which as of Maxwell should be
     //     4MB)
     //
-    paranoid_invariant(node->height > 0);
-    for (int child = 0; child < node->n_children; ++child) {
+    paranoid_invariant(node->height() > 0);
+    for (int child = 0; child < node->n_children(); ++child) {
         size += BP_WORKDONE(node, child);
     }
-    for (int child = 0; child < node->n_children; ++child) {
+    for (int child = 0; child < node->n_children(); ++child) {
         if (toku_bnc_nbytesinbuf(BNC(node, child)) > 0) {
             buffers_are_empty = false;
             break;
@@ -1130,18 +1130,18 @@ long toku_bnc_memory_used(NONLEAF_CHILDINFO bnc) {
 
 // Used only by test programs: append a child node to a parent node
 void toku_ft_nonleaf_append_child(FTNODE node, FTNODE child, const DBT *pivotkey) {
-    int childnum = node->n_children;
-    node->n_children++;
-    REALLOC_N(node->n_children, node->bp);
+    int childnum = node->n_children();
+    node->n_children()++;
+    REALLOC_N(node->n_children(), node->bp);
     BP_BLOCKNUM(node,childnum) = child->blocknum;
     BP_STATE(node,childnum) = PT_AVAIL;
     BP_WORKDONE(node, childnum)   = 0;
     set_BNC(node, childnum, toku_create_empty_nl());
     if (pivotkey) {
         invariant(childnum > 0);
-        node->pivotkeys.insert_at(pivotkey, childnum - 1);
+        node->pivotkeys().insert_at(pivotkey, childnum - 1);
     }
-    node->dirty = 1;
+    node->dirty() = 1;
 }
 
 void
@@ -1744,7 +1744,7 @@ static void ft_append_msg_to_child_buffer(const toku::comparator &cmp, FTNODE no
                                           int childnum, const ft_msg &msg, bool is_fresh) {
     paranoid_invariant(BP_STATE(node,childnum) == PT_AVAIL);
     bnc_insert_msg(BNC(node, childnum), msg, is_fresh, cmp);
-    node->dirty = 1;
+    node->dirty() = 1;
 }
 
 // This is only exported for tests.
@@ -1777,13 +1777,13 @@ static int ft_compare_pivot(const toku::comparator &cmp, const DBT *key, const D
  */
 int toku_ftnode_which_child(FTNODE node, const DBT *k, const toku::comparator &cmp) {
     // a funny case of no pivots
-    if (node->n_children <= 1) return 0;
+    if (node->n_children() <= 1) return 0;
 
     DBT pivot;
 
     // check the last key to optimize seq insertions
-    int n = node->n_children-1;
-    int c = ft_compare_pivot(cmp, k, node->pivotkeys.fill_pivot(n - 1, &pivot));
+    int n = node->n_children()-1;
+    int c = ft_compare_pivot(cmp, k, node->pivotkeys().fill_pivot(n - 1, &pivot));
     if (c > 0) return n;
 
     // binary search the pivots
@@ -1792,7 +1792,7 @@ int toku_ftnode_which_child(FTNODE node, const DBT *k, const toku::comparator &c
     int mi;
     while (lo < hi) {
         mi = (lo + hi) / 2;
-        c = ft_compare_pivot(cmp, k, node->pivotkeys.fill_pivot(mi, &pivot));
+        c = ft_compare_pivot(cmp, k, node->pivotkeys().fill_pivot(mi, &pivot));
         if (c > 0) {
             lo = mi+1;
             continue;
@@ -1810,11 +1810,11 @@ int toku_ftnode_which_child(FTNODE node, const DBT *k, const toku::comparator &c
 int toku_ftnode_hot_next_child(FTNODE node, const DBT *k, const toku::comparator &cmp) {
     DBT pivot;
     int low = 0;
-    int hi = node->n_children - 1;
+    int hi = node->n_children() - 1;
     int mi;
     while (low < hi) {
         mi = (low + hi) / 2;
-        int r = ft_compare_pivot(cmp, k, node->pivotkeys.fill_pivot(mi, &pivot));
+        int r = ft_compare_pivot(cmp, k, node->pivotkeys().fill_pivot(mi, &pivot));
         if (r > 0) {
             low = mi + 1;
         } else if (r < 0) {
@@ -1831,7 +1831,7 @@ int toku_ftnode_hot_next_child(FTNODE node, const DBT *k, const toku::comparator
 
 void toku_ftnode_save_ct_pair(CACHEKEY UU(key), void *value_data, PAIR p) {
     FTNODE CAST_FROM_VOIDP(node, value_data);
-    node->ct_pair = p;
+    node->ct_pair() = p;
 }
 
 static void
@@ -1840,7 +1840,7 @@ ft_nonleaf_msg_all(const toku::comparator &cmp, FTNODE node, const ft_msg &msg, 
 //  We don't do the splitting and merging.  That's up to the caller after doing all the puts it wants to do.
 //  The re_array[i] gets set to the reactivity of any modified child i.         (And there may be several such children.)
 {
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         ft_nonleaf_msg_once_to_child(cmp, node, i, msg, is_fresh, flow_deltas);
     }
 }
@@ -1860,8 +1860,8 @@ ft_nonleaf_put_msg(const toku::comparator &cmp, FTNODE node, int target_childnum
     // and don't do it in toku_ftnode_put_msg
     //
     MSN msg_msn = msg.msn();
-    invariant(msg_msn.msn > node->max_msn_applied_to_node_on_disk.msn);
-    node->max_msn_applied_to_node_on_disk = msg_msn;
+    invariant(msg_msn.msn > node->max_msn_applied_to_node_on_disk().msn);
+    node->max_msn_applied_to_node_on_disk() = msg_msn;
 
     if (ft_msg_type_applies_once(msg.type())) {
         ft_nonleaf_msg_once_to_child(cmp, node, target_childnum, msg, is_fresh, flow_deltas);
@@ -1975,9 +1975,9 @@ static void
 ft_leaf_gc_all_les(FT ft, FTNODE node, txn_gc_info *gc_info)
 {
     toku_ftnode_assert_fully_in_memory(node);
-    paranoid_invariant_zero(node->height);
+    paranoid_invariant_zero(node->height());
     // Loop through each leaf entry, garbage collecting as we go.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         // Perform the garbage collection.
         BASEMENTNODE bn = BLB(node, i);
         STAT64INFO_S delta;
@@ -2013,7 +2013,7 @@ void toku_ftnode_leaf_run_gc(FT ft, FTNODE node) {
         // somewhere above us in the tree.
         txn_gc_info gc_info(&txn_state_for_gc,
                             oldest_referenced_xid_for_simple_gc,
-                            node->oldest_referenced_xid_known,
+                            node->oldest_referenced_xid_known(),
                             true);
         ft_leaf_gc_all_les(ft, node, &gc_info);
     }
@@ -2042,7 +2042,7 @@ void toku_ftnode_put_msg(
     // node->max_msn_applied_to_node_on_disk here,
     // and instead defer to these functions
     //
-    if (node->height==0) {
+    if (node->height()==0) {
         toku_ft_leaf_apply_msg(
             cmp,
             update_fun,
@@ -2089,7 +2089,7 @@ void toku_ft_leaf_apply_msg(
     // be reapplied later), we mark the node as dirty and
     // take the opportunity to update node->max_msn_applied_to_node_on_disk.
     //
-    node->dirty = 1;
+    node->dirty() = 1;
 
     //
     // we cannot blindly update node->max_msn_applied_to_node_on_disk,
@@ -2101,8 +2101,8 @@ void toku_ft_leaf_apply_msg(
     // and in ft_nonleaf_put_msg, as opposed to in one location, toku_ftnode_put_msg.
     //
     MSN msg_msn = msg.msn();
-    if (msg_msn.msn > node->max_msn_applied_to_node_on_disk.msn) {
-        node->max_msn_applied_to_node_on_disk = msg_msn;
+    if (msg_msn.msn > node->max_msn_applied_to_node_on_disk().msn) {
+        node->max_msn_applied_to_node_on_disk() = msg_msn;
     }
 
     if (ft_msg_type_applies_once(msg.type())) {
@@ -2125,7 +2125,7 @@ void toku_ft_leaf_apply_msg(
             toku_ft_status_note_msn_discard();
         }
     } else if (ft_msg_type_applies_all(msg.type())) {
-        for (int childnum=0; childnum<node->n_children; childnum++) {
+        for (int childnum=0; childnum<node->n_children(); childnum++) {
             if (msg.msn().msn > BLB(node, childnum)->max_msn_applied.msn) {
                 BLB(node, childnum)->max_msn_applied = msg.msn();
                 toku_ft_bn_apply_msg(

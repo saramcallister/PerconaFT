@@ -100,33 +100,33 @@ insert_dummy_value(FTNODE node, int bn, long k, uint32_t idx)
 static void
 setup_ftnode_header(struct ftnode *node)
 {
-    node->flags = 0x11223344;
-    node->blocknum.b = 20;
-    node->layout_version = FT_LAYOUT_VERSION;
-    node->layout_version_original = FT_LAYOUT_VERSION;
-    node->height = 0;
-    node->dirty = 1;
-    node->oldest_referenced_xid_known = TXNID_NONE;
+    node->flags() = 0x11223344;
+    node->blocknum().b = 20;
+    node->layout_version() = FT_LAYOUT_VERSION;
+    node->layout_version_original() = FT_LAYOUT_VERSION;
+    node->height() = 0;
+    node->dirty() = 1;
+    node->oldest_referenced_xid_known() = TXNID_NONE;
 }
 
 static void
 setup_ftnode_partitions(struct ftnode *node, int n_children, const MSN msn, size_t maxbnsize UU())
 {
-    node->n_children = n_children;
-    node->max_msn_applied_to_node_on_disk = msn;
-    MALLOC_N(node->n_children, node->bp);
-    for (int bn = 0; bn < node->n_children; ++bn) {
+    node->n_children() = n_children;
+    node->max_msn_applied_to_node_on_disk() = msn;
+    MALLOC_N(node->n_children(), node->bp());
+    for (int bn = 0; bn < node->n_children(); ++bn) {
         BP_STATE(node, bn) = PT_AVAIL;
         set_BLB(node, bn, toku_create_empty_bn());
         BLB_MAX_MSN_APPLIED(node, bn) = msn;
     }
-    node->pivotkeys.create_empty();
+    node->pivotkeys().create_empty();
 }
 
 static void
 verify_basement_node_msns(FTNODE node, MSN expected)
 {
-    for(int i = 0; i < node->n_children; ++i) {
+    for(int i = 0; i < node->n_children(); ++i) {
         assert(expected.msn == BLB_MAX_MSN_APPLIED(node, i).msn);
     }
 }

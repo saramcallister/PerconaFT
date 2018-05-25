@@ -106,7 +106,7 @@ doit (void) {
         &node,
         true
         );
-    assert(node->n_children == 1);
+    assert(node->n_children() == 1);
     // simply assert that the buffer is less than 50MB,
     // we inserted 100MB of data in there.
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) < 50*1000*1000);

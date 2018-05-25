@@ -698,7 +698,7 @@ flush_to_leaf(FT_HANDLE t, bool make_leaf_up_to_date, bool use_flush) {
         destroy_nonleaf_childinfo(BNC(parentnode, 0));
         set_BNC(parentnode, 0, parent_bnc);
         BP_STATE(parentnode, 0) = PT_AVAIL;
-        parentnode->max_msn_applied_to_node_on_disk = max_parent_msn;
+        parentnode->max_msn_applied_to_node_on_disk() = max_parent_msn;
         struct ancestors ancestors = { .node = parentnode, .childnum = 0, .next = NULL };
         bool msgs_applied;
         toku_apply_ancestors_messages_to_node(t, child, &ancestors, pivot_bounds::infinite_bounds(), &msgs_applied, -1);
@@ -928,7 +928,7 @@ flush_to_leaf_with_keyrange(FT_HANDLE t, bool make_leaf_up_to_date) {
     destroy_nonleaf_childinfo(BNC(parentnode, 0));
     set_BNC(parentnode, 0, parent_bnc);
     BP_STATE(parentnode, 0) = PT_AVAIL;
-    parentnode->max_msn_applied_to_node_on_disk = max_parent_msn;
+    parentnode->max_msn_applied_to_node_on_disk() = max_parent_msn;
     struct ancestors ancestors = { .node = parentnode, .childnum = 0, .next = NULL };
     DBT lbe, ubi;
     toku_init_dbt(&lbe);
@@ -1144,7 +1144,7 @@ compare_apply_and_flush(FT_HANDLE t, bool make_leaf_up_to_date) {
     destroy_nonleaf_childinfo(BNC(parentnode, 0));
     set_BNC(parentnode, 0, parent_bnc);
     BP_STATE(parentnode, 0) = PT_AVAIL;
-    parentnode->max_msn_applied_to_node_on_disk = max_parent_msn;
+    parentnode->max_msn_applied_to_node_on_disk() = max_parent_msn;
     struct ancestors ancestors = { .node = parentnode, .childnum = 0, .next = NULL };
     bool msgs_applied;
     toku_apply_ancestors_messages_to_node(t, child2, &ancestors, pivot_bounds::infinite_bounds(), &msgs_applied, -1);

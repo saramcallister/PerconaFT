@@ -210,27 +210,27 @@ static uint32_t
 serialize_node_header_size(FTNODE node) {
     uint32_t retval = 0;
     retval += 8; // magic
-    retval += sizeof(node->layout_version);
-    retval += sizeof(node->layout_version_original);
+    retval += sizeof(node->layout_version());
+    retval += sizeof(node->layout_version_original());
     retval += 4; // BUILD_ID
     retval += 4; // n_children
-    retval += node->n_children*8; // encode start offset and length of each partition
+    retval += node->n_children()*8; // encode start offset and length of each partition
     retval += 4; // checksum
     return retval;
 }
 
 static void
 serialize_node_header(FTNODE node, FTNODE_DISK_DATA ndd, struct wbuf *wbuf) {
-    if (node->height == 0) 
+    if (node->height() == 0) 
         wbuf_nocrc_literal_bytes(wbuf, "tokuleaf", 8);
     else 
         wbuf_nocrc_literal_bytes(wbuf, "tokunode", 8);
-    paranoid_invariant(node->layout_version == FT_LAYOUT_VERSION);
-    wbuf_nocrc_int(wbuf, node->layout_version);
-    wbuf_nocrc_int(wbuf, node->layout_version_original);
+    paranoid_invariant(node->layout_version() == FT_LAYOUT_VERSION);
+    wbuf_nocrc_int(wbuf, node->layout_version());
+    wbuf_nocrc_int(wbuf, node->layout_version_original());
     wbuf_nocrc_uint(wbuf, BUILD_ID);
-    wbuf_nocrc_int (wbuf, node->n_children);
-    for (int i=0; i<node->n_children; i++) {
+    wbuf_nocrc_int (wbuf, node->n_children());
+    for (int i=0; i<node->n_children(); i++) {
         assert(BP_SIZE(ndd,i)>0);
         wbuf_nocrc_int(wbuf, BP_START(ndd, i)); // save the beginning of the partition
         wbuf_nocrc_int(wbuf, BP_SIZE (ndd, i));         // and the size
@@ -245,9 +245,9 @@ static uint32_t
 serialize_ftnode_partition_size (FTNODE node, int i)
 {
     uint32_t result = 0;
-    paranoid_invariant(node->bp[i].state == PT_AVAIL);
+    paranoid_invariant((node->bp())[i].state == PT_AVAIL);
     result++; // Byte that states what the partition is
-    if (node->height > 0) {
+    if (node->height() > 0) {
         NONLEAF_CHILDINFO bnc = BNC(node, i);
         // number of messages (4 bytes) plus size of the buffer
         result += (4 + toku_bnc_nbytesinbuf(bnc));
@@ -335,7 +335,7 @@ serialize_ftnode_partition(FTNODE node, int i, struct sub_block *sb) {
     //
     struct wbuf wb;
     wbuf_init(&wb, sb->uncompressed_ptr, sb->uncompressed_size);
-    if (node->height > 0) {
+    if (node->height() > 0) {
         // TODO: (Zardosht) possibly exit early if there are no messages
         serialize_child_buffer(BNC(node, i), &wb);
     }
@@ -420,10 +420,10 @@ serialize_ftnode_info_size(FTNODE node)
     retval += 4; // flags
     retval += 4; // height;
     retval += 8; // oldest_referenced_xid_known
-    retval += node->pivotkeys.serialized_size();
-    retval += (node->n_children-1)*4; // encode length of each pivot
-    if (node->height > 0) {
-        retval += node->n_children*8; // child blocknum's
+    retval += node->pivotkeys().serialized_size();
+    retval += (node->n_children()-1)*4; // encode length of each pivot
+    if (node->height() > 0) {
+        retval += node->n_children()*8; // child blocknum's
     }
     retval += 4; // checksum
     return retval;
@@ -438,16 +438,16 @@ static void serialize_ftnode_info(FTNODE node, SUB_BLOCK sb) {
     struct wbuf wb;
     wbuf_init(&wb, sb->uncompressed_ptr, sb->uncompressed_size);
 
-    wbuf_MSN(&wb, node->max_msn_applied_to_node_on_disk);
+    wbuf_MSN(&wb, node->max_msn_applied_to_node_on_disk());
     wbuf_nocrc_uint(&wb, 0); // write a dummy value for where node->nodesize used to be
-    wbuf_nocrc_uint(&wb, node->flags);
-    wbuf_nocrc_int (&wb, node->height);    
-    wbuf_TXNID(&wb, node->oldest_referenced_xid_known);
-    node->pivotkeys.serialize_to_wbuf(&wb);
+    wbuf_nocrc_uint(&wb, node->flags());
+    wbuf_nocrc_int (&wb, node->height());    
+    wbuf_TXNID(&wb, node->oldest_referenced_xid_known());
+    node->pivotkeys().serialize_to_wbuf(&wb);
 
     // child blocks, only for internal nodes
-    if (node->height > 0) {
-        for (int i = 0; i < node->n_children; i++) {
+    if (node->height() > 0) {
+        for (int i = 0; i < node->n_children(); i++) {
             wbuf_nocrc_BLOCKNUM(&wb, BP_BLOCKNUM(node,i));
         }
     }
@@ -469,7 +469,7 @@ toku_serialize_ftnode_size (FTNODE node) {
     toku_ftnode_assert_fully_in_memory(node);
     result += serialize_node_header_size(node);
     result += serialize_ftnode_info_size(node);
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         result += serialize_ftnode_partition_size(node,i);
     }
     return result;
@@ -641,10 +641,10 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
 {
     toku_ftnode_assert_fully_in_memory(node);
 
-    if (do_rebalancing && node->height == 0) {
+    if (do_rebalancing && node->height() == 0) {
         toku_ftnode_leaf_rebalance(node, basementnodesize);
     }
-    const int npartitions = node->n_children;
+    const int npartitions = node->n_children();
 
     // Each partition represents a compressed sub block
     // For internal nodes, a sub block is a message buffer
@@ -659,7 +659,7 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
 
     // determine how large our serialization and compression buffers need to be.
     size_t serialize_buf_size = 0, compression_buf_size = 0;
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         sb[i].uncompressed_size = serialize_ftnode_partition_size(node, i);
         sb[i].compressed_size_bound = toku_compress_bound(compression_method, sb[i].uncompressed_size);
         serialize_buf_size += sb[i].uncompressed_size;
@@ -669,7 +669,7 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
     // give each sub block a base pointer to enough buffer space for serialization and compression
     toku::scoped_malloc serialize_buf(serialize_buf_size);
     toku::scoped_malloc compression_buf(compression_buf_size);
-    for (size_t i = 0, uncompressed_offset = 0, compressed_offset = 0; i < (size_t) node->n_children; i++) {
+    for (size_t i = 0, uncompressed_offset = 0, compressed_offset = 0; i < (size_t) node->n_children(); i++) {
         sb[i].uncompressed_ptr = reinterpret_cast<char *>(serialize_buf.get()) + uncompressed_offset;
         sb[i].compressed_ptr = reinterpret_cast<char *>(compression_buf.get()) + compressed_offset;
         uncompressed_offset += sb[i].uncompressed_size;
@@ -724,7 +724,7 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
                                  + sb_node_info.uncompressed_size   // uncompressed nodeinfo (without its checksum)
                                  + 4);                            // nodeinfo's checksum
     // store the BP_SIZESs
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         uint32_t len         = sb[i].compressed_size + 4; // data and checksum
         BP_SIZE (*ndd,i) = len;
         BP_START(*ndd,i) = total_node_size;
@@ -776,10 +776,10 @@ ftnode_header_size (FTNODE node)
 // Effect: Estimate how much main memory a node requires.
 {
     long retval = 0;
-    int n_children = node->n_children;
+    int n_children = node->n_children();
     retval += sizeof(*node);
-    retval += (n_children)*(sizeof(node->bp[0]));
-    retval += node->pivotkeys.total_size();
+    retval += (n_children)*(sizeof((node->bp())[0]));
+    retval += node->pivotkeys().total_size();
     return retval;
 }
 
@@ -839,11 +839,11 @@ int toku_serialize_ftnode_to(int fd,
         node, n_uncompressed_bytes, n_to_write, io_time, for_checkpoint);
 
     toku_free(compressed_buf);
-    node->dirty = 0;  // See #1957.   Must set the node to be clean after
+    node->dirty() = 0;  // See #1957.   Must set the node to be clean after
                       // serializing it so that it doesn't get written again on
                       // the next checkpoint or eviction.
-    if (node->height == 0) {
-        for (int i = 0; i < node->n_children; i++) {
+    if (node->height() == 0) {
+        for (int i = 0; i < node->n_children(); i++) {
             if (BP_STATE(node, i) == PT_AVAIL) {
                 BLB_LRD(node, i) = 0;
             }
@@ -1213,7 +1213,7 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
     // first verify the checksum
     int r = 0;
     const char *fname = toku_ftnode_get_cachefile_fname_in_env(node);
-    r = verify_ftnode_sub_block(sb, fname, node->blocknum);
+    r = verify_ftnode_sub_block(sb, fname, node->blocknum());
     if (r != 0) {
         fprintf(
             stderr,
@@ -1222,7 +1222,7 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
             __FILE__,
             __LINE__,
             fname ? fname : "unknown",
-            node->blocknum.b,
+            node->blocknum().b,
             r);
         dump_bad_block(static_cast<unsigned char *>(sb->uncompressed_ptr),
                        sb->uncompressed_size);
@@ -1236,15 +1236,15 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
     struct rbuf rb;
     rbuf_init(&rb, (unsigned char *) sb->uncompressed_ptr, data_size);
 
-    node->max_msn_applied_to_node_on_disk = rbuf_MSN(&rb);
+    node->max_msn_applied_to_node_on_disk() = rbuf_MSN(&rb);
     (void)rbuf_int(&rb);
-    node->flags = rbuf_int(&rb);
-    node->height = rbuf_int(&rb);
-    if (node->layout_version_read_from_disk < FT_LAYOUT_VERSION_19) {
+    node->flags() = rbuf_int(&rb);
+    node->height() = rbuf_int(&rb);
+    if (node->layout_version_read_from_disk() < FT_LAYOUT_VERSION_19) {
         (void) rbuf_int(&rb); // optimized_for_upgrade
     }
-    if (node->layout_version_read_from_disk >= FT_LAYOUT_VERSION_22) {
-        rbuf_TXNID(&rb, &node->oldest_referenced_xid_known);
+    if (node->layout_version_read_from_disk() >= FT_LAYOUT_VERSION_22) {
+        rbuf_TXNID(&rb, &node->oldest_referenced_xid_known());
     }
 
     // now create the basement nodes or childinfos, depending on whether this is a
@@ -1254,16 +1254,16 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
     // n_children is now in the header, nd the allocatio of the node->bp is in deserialize_ftnode_from_rbuf.
 
     // now the pivots
-    if (node->n_children > 1) {
-        node->pivotkeys.deserialize_from_rbuf(&rb, node->n_children - 1);
+    if (node->n_children() > 1) {
+        node->pivotkeys().deserialize_from_rbuf(&rb, node->n_children() - 1);
     } else {
-        node->pivotkeys.create_empty();
+        node->pivotkeys().create_empty();
     }
 
     // if this is an internal node, unpack the block nums, and fill in necessary fields
     // of childinfo
-    if (node->height > 0) {
-        for (int i = 0; i < node->n_children; i++) {
+    if (node->height() > 0) {
+        for (int i = 0; i < node->n_children(); i++) {
             BP_BLOCKNUM(node,i) = rbuf_blocknum(&rb);
             BP_WORKDONE(node, i) = 0;
         }
@@ -1278,7 +1278,7 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
             __FILE__,
             __LINE__,
             fname ? fname : "unknown",
-            node->blocknum.b,
+            node->blocknum().b,
             data_size,
             rb.ndone);
         dump_bad_block(rb.buf, rb.size);
@@ -1290,9 +1290,9 @@ exit:
 
 static void
 setup_available_ftnode_partition(FTNODE node, int i) {
-    if (node->height == 0) {
+    if (node->height() == 0) {
         set_BLB(node, i, toku_create_empty_bn());
-        BLB_MAX_MSN_APPLIED(node,i) = node->max_msn_applied_to_node_on_disk;
+        BLB_MAX_MSN_APPLIED(node,i) = node->max_msn_applied_to_node_on_disk();
     }
     else {
         set_BNC(node, i, toku_create_empty_nl());
@@ -1321,7 +1321,7 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
         // we can possibly require is a single basement node
         // we find out what basement node the query cares about
         // and check if it is available
-        if (node->height == 0) {
+        if (node->height() == 0) {
             int left_child = bfe->leftmost_child_wanted(node);
             int right_child = bfe->rightmost_child_wanted(node);
             if (left_child == right_child) {
@@ -1352,7 +1352,7 @@ setup_partitions_using_bfe(FTNODE node,
     // setup memory needed for the node
     //
     //printf("node height %d, blocknum %" PRId64 ", type %d lc %d rc %d\n", node->height, node->blocknum.b, bfe->type, lc, rc);
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         BP_INIT_UNTOUCHED_CLOCK(node,i);
         if (data_in_memory) {
             BP_STATE(node, i) = ((bfe->wants_child_available(i) || (lc <= i && i <= rc))
@@ -1405,7 +1405,7 @@ static int deserialize_ftnode_partition(
 
     int r = 0;
     const char *fname = toku_ftnode_get_cachefile_fname_in_env(node);
-    r = verify_ftnode_sub_block(sb, fname, node->blocknum);
+    r = verify_ftnode_sub_block(sb, fname, node->blocknum());
     if (r != 0) {
         fprintf(stderr,
                 "%s:%d:deserialize_ftnode_partition - "
@@ -1414,7 +1414,7 @@ static int deserialize_ftnode_partition(
                 __FILE__,
                 __LINE__,
                 fname ? fname : "unknown",
-                node->blocknum.b,
+                node->blocknum().b,
                 r);
         goto exit;
     }
@@ -1427,7 +1427,7 @@ static int deserialize_ftnode_partition(
     unsigned char ch;
     ch = rbuf_char(&rb);
 
-    if (node->height > 0) {
+    if (node->height() > 0) {
         if (ch != FTNODE_PARTITION_MSG_BUFFER) {
             fprintf(stderr,
                     "%s:%d:deserialize_ftnode_partition - "
@@ -1436,14 +1436,14 @@ static int deserialize_ftnode_partition(
                     __FILE__,
                     __LINE__,
                     fname ? fname : "unknown",
-                    node->blocknum.b,
+                    node->blocknum().b,
                     ch,
                     FTNODE_PARTITION_MSG_BUFFER);
             dump_bad_block(rb.buf, rb.size);
             assert(ch == FTNODE_PARTITION_MSG_BUFFER);
         }
         NONLEAF_CHILDINFO bnc = BNC(node, childnum);
-        if (node->layout_version_read_from_disk <= FT_LAYOUT_VERSION_26) {
+        if (node->layout_version_read_from_disk() <= FT_LAYOUT_VERSION_26) {
             // Layout version <= 26 did not serialize sorted message trees to disk.
             deserialize_child_buffer_v26(bnc, &rb, cmp);
         } else {
@@ -1459,7 +1459,7 @@ static int deserialize_ftnode_partition(
                     __FILE__,
                     __LINE__,
                     fname ? fname : "unknown",
-                    node->blocknum.b,
+                    node->blocknum().b,
                     ch,
                     FTNODE_PARTITION_DMT_LEAVES);
             dump_bad_block(rb.buf, rb.size);
@@ -1473,7 +1473,7 @@ static int deserialize_ftnode_partition(
 
         BASEMENTNODE bn = BLB(node, childnum);
         bn->data_buffer.deserialize_from_rbuf(
-            num_entries, &rb, data_size, node->layout_version_read_from_disk);
+            num_entries, &rb, data_size, node->layout_version_read_from_disk());
     }
     if (rb.ndone != rb.size) {
         fprintf(stderr,
@@ -1482,7 +1482,7 @@ static int deserialize_ftnode_partition(
                 __FILE__,
                 __LINE__,
                 fname ? fname : "unknown",
-                node->blocknum.b,
+                node->blocknum().b,
                 rb.ndone,
                 rb.size);
         dump_bad_block(rb.buf, rb.size);
@@ -1511,7 +1511,7 @@ static int decompress_and_deserialize_worker(struct rbuf curr_rbuf,
                 __FILE__,
                 __LINE__,
                 fname ? fname : "unknown",
-                node->blocknum.b,
+                node->blocknum().b,
                 r);
         dump_bad_block(curr_rbuf.buf, curr_rbuf.size);
         goto exit;
@@ -1528,7 +1528,7 @@ static int decompress_and_deserialize_worker(struct rbuf curr_rbuf,
                 __FILE__,
                 __LINE__,
                 fname ? fname : "unknown",
-                node->blocknum.b,
+                node->blocknum().b,
                 r);
         dump_bad_block(curr_rbuf.buf, curr_rbuf.size);
         goto exit;
@@ -1563,12 +1563,12 @@ exit:
 static FTNODE alloc_ftnode_for_deserialize(uint32_t fullhash, BLOCKNUM blocknum) {
 // Effect: Allocate an FTNODE and fill in the values that are not read from
     FTNODE XMALLOC(node);
-    node->fullhash = fullhash;
-    node->blocknum = blocknum;
-    node->dirty = 0;
-    node->oldest_referenced_xid_known = TXNID_NONE;
-    node->bp = nullptr;
-    node->ct_pair = nullptr;
+    node->fullhash() = fullhash;
+    node->blocknum() = blocknum;
+    node->dirty() = 0;
+    node->oldest_referenced_xid_known() = TXNID_NONE;
+    node->bp() = nullptr;
+    node->ct_pair() = nullptr;
     return node; 
 }
 
@@ -1642,8 +1642,8 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
         goto cleanup;
     }
 
-    node->layout_version_read_from_disk = rbuf_int(rb);
-    if (node->layout_version_read_from_disk <
+    node->layout_version_read_from_disk() = rbuf_int(rb);
+    if (node->layout_version_read_from_disk() <
         FT_FIRST_LAYOUT_VERSION_WITH_BASEMENT_NODES) {
         fprintf(
             stderr,
@@ -1654,7 +1654,7 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
             __LINE__,
             fname ? fname : "unknown",
             blocknum.b,
-            node->layout_version_read_from_disk,
+            node->layout_version_read_from_disk(),
             FT_FIRST_LAYOUT_VERSION_WITH_BASEMENT_NODES);
         dump_bad_block(rb->buf, rb->size);
         // This code path doesn't have to worry about upgrade.
@@ -1669,11 +1669,11 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
     // layout version is current (it will be as soon as we finish
     // deserializing).
     // TODO(leif): remove node->layout_version (#5174)
-    node->layout_version = FT_LAYOUT_VERSION;
+    node->layout_version() = FT_LAYOUT_VERSION;
 
-    node->layout_version_original = rbuf_int(rb);
-    node->build_id = rbuf_int(rb);
-    node->n_children = rbuf_int(rb);
+    node->layout_version_original() = rbuf_int(rb);
+    node->build_id() = rbuf_int(rb);
+    node->n_children() = rbuf_int(rb);
     // Guaranteed to be have been able to read up to here.  If n_children
     // is too big, we may have a problem, so check that we won't overflow
     // while reading the partition locations.
@@ -1700,10 +1700,10 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
         goto cleanup;
     }
 
-    XMALLOC_N(node->n_children, node->bp);
-    XMALLOC_N(node->n_children, *ndd);
+    XMALLOC_N(node->n_children(), node->bp());
+    XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
-    for (int i=0; i<node->n_children; i++) {
+    for (int i=0; i<node->n_children(); i++) {
         BP_START(*ndd,i) = rbuf_int(rb);
         BP_SIZE (*ndd,i) = rbuf_int(rb);
     }
@@ -1848,7 +1848,7 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
     }
 
     // handle clock
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         if (bfe->wants_child_available(i)) {
             paranoid_invariant(BP_STATE(node,i) == PT_AVAIL);
             BP_TOUCH_CLOCK(node,i);
@@ -1866,7 +1866,7 @@ cleanup:
     if (r != 0) {
         if (node) {
             toku_free(*ndd);
-            toku_free(node->bp);
+            toku_free(node->bp());
             toku_free(node);
         }
     }
@@ -1883,16 +1883,16 @@ static int deserialize_and_upgrade_internal_node(FTNODE node,
                                                  struct rbuf *rb,
                                                  ftnode_fetch_extra *bfe,
                                                  STAT64INFO info) {
-    int version = node->layout_version_read_from_disk;
+    int version = node->layout_version_read_from_disk();
 
     if (version == FT_LAST_LAYOUT_VERSION_WITH_FINGERPRINT) {
         (void) rbuf_int(rb);                          // 10. fingerprint
     }
 
-    node->n_children = rbuf_int(rb);                  // 11. n_children
+    node->n_children() = rbuf_int(rb);                  // 11. n_children
 
     // Sub-tree esitmates...
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         if (version == FT_LAST_LAYOUT_VERSION_WITH_FINGERPRINT) {
             (void) rbuf_int(rb);                      // 12. fingerprint
         }
@@ -1910,19 +1910,19 @@ static int deserialize_and_upgrade_internal_node(FTNODE node,
     }
 
     // Pivot keys
-    node->pivotkeys.deserialize_from_rbuf(rb, node->n_children - 1);
+    node->pivotkeys().deserialize_from_rbuf(rb, node->n_children() - 1);
 
     // Create space for the child node buffers (a.k.a. partitions).
-    XMALLOC_N(node->n_children, node->bp);
+    XMALLOC_N(node->n_children(), node->bp());
 
     // Set the child blocknums.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         BP_BLOCKNUM(node, i) = rbuf_blocknum(rb);    // 18. blocknums
         BP_WORKDONE(node, i) = 0;
     }
 
     // Read in the child buffer maps.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         // The following fields were previously used by the `sub_block_map'
         // They include:
         // - 4 byte index
@@ -1963,7 +1963,7 @@ static int deserialize_and_upgrade_internal_node(FTNODE node,
     highest_msn.msn = 0;
 
     // Deserialize de-compressed buffers.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         NONLEAF_CHILDINFO bnc = BNC(node, i);
         MSN highest_msn_in_this_buffer = deserialize_child_buffer_v13(bfe->ft, bnc, rb);
         if (highest_msn.msn == 0) {
@@ -1972,9 +1972,9 @@ static int deserialize_and_upgrade_internal_node(FTNODE node,
     }
 
     // Assign the highest msn from our upgrade message buffers
-    node->max_msn_applied_to_node_on_disk = highest_msn;
+    node->max_msn_applied_to_node_on_disk() = highest_msn;
     // Since we assigned MSNs to this node's messages, we need to dirty it.
-    node->dirty = 1;
+    node->dirty() = 1;
 
     // Must compute the checksum now (rather than at the end, while we
     // still have the pointer to the buffer).
@@ -2007,7 +2007,7 @@ deserialize_and_upgrade_leaf_node(FTNODE node,
                                   STAT64INFO info)
 {
     int r = 0;
-    int version = node->layout_version_read_from_disk;
+    int version = node->layout_version_read_from_disk();
 
     // This is a leaf node, so the offsets in the buffer will be
     // different from the internal node offsets above.
@@ -2037,8 +2037,8 @@ deserialize_and_upgrade_leaf_node(FTNODE node,
 
     // Set number of children to 1, since we will only have one
     // basement node.
-    node->n_children = 1;
-    XMALLOC_N(node->n_children, node->bp);
+    node->n_children() = 1;
+    XMALLOC_N(node->n_children(), node->bp());
     node->pivotkeys.create_empty();
 
     // Create one basement node to contain all the leaf entries by
@@ -2050,7 +2050,7 @@ deserialize_and_upgrade_leaf_node(FTNODE node,
 
     // 11. Deserialize the partition maps, though they are not used in the
     // newer versions of ftnodes.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         // The following fields were previously used by the `sub_block_map'
         // They include:
         // - 4 byte index
@@ -2111,14 +2111,14 @@ deserialize_and_upgrade_leaf_node(FTNODE node,
         if (has_end_to_end_checksum) {
             data_size -= sizeof(uint32_t);
         }
-        bn->data_buffer.deserialize_from_rbuf(n_in_buf, rb, data_size, node->layout_version_read_from_disk);
+        bn->data_buffer.deserialize_from_rbuf(n_in_buf, rb, data_size, node->layout_version_read_from_disk());
     }
 
     // Whatever this is must be less than the MSNs of every message above
     // it, so it's ok to take it here.
     bn->max_msn_applied = bfe->ft->h->highest_unused_msn_for_upgrade;
     bn->stale_ancestor_messages_applied = false;
-    node->max_msn_applied_to_node_on_disk = bn->max_msn_applied;
+    node->max_msn_applied_to_node_on_disk() = bn->max_msn_applied;
 
     // Checksum (end to end) is only on version 14
     if (has_end_to_end_checksum) {
@@ -2207,8 +2207,8 @@ static int deserialize_and_upgrade_ftnode(FTNODE node,
     // II. Start reading ftnode fields out of the decompressed buffer.
 
     // Copy over old version info.
-    node->layout_version_read_from_disk = rbuf_int(&rb); // 2. layout version
-    version = node->layout_version_read_from_disk;
+    node->layout_version_read_from_disk() = rbuf_int(&rb); // 2. layout version
+    version = node->layout_version_read_from_disk();
     if (version > FT_LAYOUT_VERSION_14) {
         const char* fname = toku_cachefile_fname_in_env(bfe->ft->cf);
         fprintf(stderr,
@@ -2226,17 +2226,17 @@ static int deserialize_and_upgrade_ftnode(FTNODE node,
     }
     assert(version <= FT_LAYOUT_VERSION_14);
     // Upgrade the current version number to the current version.
-    node->layout_version = FT_LAYOUT_VERSION;
+    node->layout_version() = FT_LAYOUT_VERSION;
 
-    node->layout_version_original = rbuf_int(&rb);      // 3. original layout
-    node->build_id = rbuf_int(&rb);                     // 4. build id
+    node->layout_version_original() = rbuf_int(&rb);      // 3. original layout
+    node->build_id() = rbuf_int(&rb);                     // 4. build id
 
     // The remaining offsets into the rbuf do not map to the current
     // version, so we need to fill in the blanks and ignore older
     // fields.
     (void)rbuf_int(&rb);                                // 5. nodesize
-    node->flags = rbuf_int(&rb);                        // 6. flags
-    node->height = rbuf_int(&rb);                       // 7. height
+    node->flags() = rbuf_int(&rb);                        // 6. flags
+    node->height() = rbuf_int(&rb);                       // 7. height
 
     // If the version is less than 14, there are two extra ints here.
     // we would need to ignore them if they are there.
@@ -2252,16 +2252,16 @@ static int deserialize_and_upgrade_ftnode(FTNODE node,
     // III. Read in Leaf and Internal Node specific data.
 
     // Check height to determine whether this is a leaf node or not.
-    if (node->height > 0) {
+    if (node->height() > 0) {
         r = deserialize_and_upgrade_internal_node(node, &rb, bfe, info);
     } else {
         r = deserialize_and_upgrade_leaf_node(node, &rb, bfe, info);
     }
 
-    XMALLOC_N(node->n_children, *ndd);
+    XMALLOC_N(node->n_children(), *ndd);
     // Initialize the partition locations to zero, because version 14
     // and below have no notion of partitions on disk.
-    for (int i=0; i<node->n_children; i++) {
+    for (int i=0; i<node->n_children(); i++) {
         BP_START(*ndd,i) = 0;
         BP_SIZE (*ndd,i) = 0;
     }
@@ -2321,12 +2321,12 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
         goto cleanup;
     }
 
-    node->layout_version_read_from_disk = rbuf_int(rb);
-    lazy_assert(node->layout_version_read_from_disk >= FT_LAYOUT_MIN_SUPPORTED_VERSION);
+    node->layout_version_read_from_disk() = rbuf_int(rb);
+    lazy_assert(node->layout_version_read_from_disk() >= FT_LAYOUT_MIN_SUPPORTED_VERSION);
 
     // Check if we are reading in an older node version.
-    if (node->layout_version_read_from_disk <= FT_LAYOUT_VERSION_14) {
-        int version = node->layout_version_read_from_disk;
+    if (node->layout_version_read_from_disk() <= FT_LAYOUT_VERSION_14) {
+        int version = node->layout_version_read_from_disk();
         // Perform the upgrade.
         r = deserialize_and_upgrade_ftnode(node, ndd, blocknum, bfe, info, fd);
         if (r != 0) {
@@ -2345,7 +2345,7 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
 
         if (version <= FT_LAYOUT_VERSION_13) {
             // deprecate 'TOKU_DB_VALCMP_BUILTIN'. just remove the flag
-            node->flags &= ~TOKU_DB_VALCMP_BUILTIN_13;
+            node->flags() &= ~TOKU_DB_VALCMP_BUILTIN_13;
         }
 
         // If everything is ok, just re-assign the ftnode and retrn.
@@ -2358,14 +2358,14 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
     // removes the optimized for upgrade field, which has already been
     // removed in the deserialization code (see
     // deserialize_ftnode_info()).
-    node->layout_version = FT_LAYOUT_VERSION;
-    node->layout_version_original = rbuf_int(rb);
-    node->build_id = rbuf_int(rb);
-    node->n_children = rbuf_int(rb);
-    XMALLOC_N(node->n_children, node->bp);
-    XMALLOC_N(node->n_children, *ndd);
+    node->layout_version() = FT_LAYOUT_VERSION;
+    node->layout_version_original() = rbuf_int(rb);
+    node->build_id() = rbuf_int(rb);
+    node->n_children() = rbuf_int(rb);
+    XMALLOC_N(node->n_children(), node->bp());
+    XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
-    for (int i=0; i<node->n_children; i++) {
+    for (int i=0; i<node->n_children(); i++) {
         BP_START(*ndd,i) = rbuf_int(rb);
         BP_SIZE (*ndd,i) = rbuf_int(rb);
     }
@@ -2444,7 +2444,7 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
 
     // This loop is parallelizeable, since we don't have a dependency on the
     // work done so far.
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         uint32_t curr_offset = BP_START(*ndd, i);
         uint32_t curr_size = BP_SIZE(*ndd, i);
         // the compressed, serialized partitions start at where rb is currently
@@ -2558,7 +2558,7 @@ int
 toku_deserialize_bp_from_disk(FTNODE node, FTNODE_DISK_DATA ndd, int childnum, int fd, ftnode_fetch_extra *bfe) {
     int r = 0;
     assert(BP_STATE(node,childnum) == PT_ON_DISK);
-    assert(node->bp[childnum].ptr.tag == BCT_NULL);
+    assert((node->bp())[childnum].ptr.tag == BCT_NULL);
     
     //
     // setup the partition
@@ -2571,7 +2571,7 @@ toku_deserialize_bp_from_disk(FTNODE node, FTNODE_DISK_DATA ndd, int childnum, i
     // 
     // get the file offset and block size for the block
     DISKOFF node_offset, total_node_disk_size;
-    bfe->ft->blocktable.translate_blocknum_to_offset_size(node->blocknum, &node_offset, &total_node_disk_size);
+    bfe->ft->blocktable.translate_blocknum_to_offset_size(node->blocknum(), &node_offset, &total_node_disk_size);
 
     uint32_t curr_offset = BP_START(ndd, childnum);
     uint32_t curr_size = BP_SIZE (ndd, childnum);
@@ -2669,7 +2669,7 @@ int toku_deserialize_bp_from_compressed(FTNODE node,
                 __FILE__,
                 __LINE__,
                 fname ? fname : "unknown",
-                node->blocknum.b,
+                node->blocknum().b,
                 r);
         dump_bad_block(static_cast<unsigned char *>(curr_sb->compressed_ptr),
                        curr_sb->compressed_size);
@@ -3272,7 +3272,7 @@ toku_upgrade_msn_from_root_to_header(int fd, FT ft)
         goto exit;
     }
 
-    ft->h->max_msn_in_ft = node->max_msn_applied_to_node_on_disk;
+    ft->h->max_msn_in_ft = node->max_msn_applied_to_node_on_disk();
     toku_ftnode_free(&node);
     toku_free(ndd);
  exit:

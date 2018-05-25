@@ -169,7 +169,7 @@ doit (void) {
     FTNODE node;
     toku_pin_node_with_min_bfe(&node, node_leaf[1], ft);
     // hack to get merge going
-    BLB_SEQINSERT(node, node->n_children-1) = false;
+    BLB_SEQINSERT(node, node->n_children()-1) = false;
     toku_unpin_ftnode(ft->ft, node);
 
     // now do a lookup on one of the keys, this should bring a leaf node up to date 
@@ -189,7 +189,7 @@ doit (void) {
         &node,
         true
         );
-    assert(node->n_children == 2);
+    assert(node->n_children() == 2);
     // we expect that this flushes its buffer, that
     // a merge is not done, and that the lookup
     // of values "a" and "z" still works
@@ -212,7 +212,7 @@ doit (void) {
         true
         );
     // check that merge happened
-    assert(node->n_children == 1);
+    assert(node->n_children() == 1);
     // check that buffers are empty
     assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
     toku_unpin_ftnode(ft->ft, node);

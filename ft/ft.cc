@@ -323,7 +323,7 @@ static void setup_initial_ft_root_node(FT ft, BLOCKNUM blocknum) {
     BP_STATE(node,0) = PT_AVAIL;
 
     uint32_t fullhash = toku_cachetable_hash(ft->cf, blocknum);
-    node->fullhash = fullhash;
+    node->fullhash() = fullhash;
     toku_cachetable_put(ft->cf, blocknum, fullhash,
                         node, make_ftnode_pair_attr(node),
                         get_write_callbacks_for_node(ft),
@@ -1040,10 +1040,10 @@ garbage_helper(BLOCKNUM blocknum, int64_t UU(size), int64_t UU(address), void *e
     if (r != 0) {
         goto no_node;
     }
-    if (node->height > 0) {
+    if (node->height() > 0) {
         goto exit;
     }
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         bn_data* bd = BLB_DATA(node, i);
         r = bd->iterate<struct garbage_helper_extra, garbage_leafentry_helper>(info);
         if (r != 0) {
@@ -1053,7 +1053,7 @@ garbage_helper(BLOCKNUM blocknum, int64_t UU(size), int64_t UU(address), void *e
     {
         float a = info->used_space, b=info->total_space;
         float percentage = (1 - (a / b)) * 100;
-        printf("LeafNode# %d has %d BasementNodes and %2.1f%% of the allocated space is garbage\n", (int)blocknum.b, node->n_children, percentage);
+        printf("LeafNode# %d has %d BasementNodes and %2.1f%% of the allocated space is garbage\n", (int)blocknum.b, node->n_children(), percentage);
     }
 exit:
     toku_ftnode_free(&node);

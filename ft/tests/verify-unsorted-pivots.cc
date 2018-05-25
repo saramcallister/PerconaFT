@@ -53,7 +53,7 @@ make_node(FT_HANDLE ft, int height) {
 
 static void
 append_leaf(FTNODE leafnode, void *key, size_t keylen, void *val, size_t vallen) {
-    assert(leafnode->height == 0);
+    assert(leafnode->height() == 0);
 
     DBT thekey; toku_fill_dbt(&thekey, key, keylen);
     DBT theval; toku_fill_dbt(&theval, val, vallen);
@@ -77,7 +77,7 @@ append_leaf(FTNODE leafnode, void *key, size_t keylen, void *val, size_t vallen)
         NULL);
 
     // don't forget to dirty the node
-    leafnode->dirty = 1;
+    leafnode->dirty() = 1;
 }
 
 static void

@@ -190,7 +190,7 @@ toku_pin_ftnode_for_query(
         goto exit;
     }
     node = static_cast<FTNODE>(node_v);
-    if (apply_ancestor_messages && node->height == 0) {
+    if (apply_ancestor_messages && node->height() == 0) {
         needs_ancestors_messages = toku_ft_leaf_needs_ancestors_messages(
             ft_handle->ft, 
             node, 
@@ -252,7 +252,7 @@ toku_pin_ftnode_for_query(
             // written out, it would have to be dirtied.  That
             // requires a write lock, and a write lock requires you to
             // resolve checkpointing.
-            if (!node->dirty) {
+            if (!node->dirty()) {
                 toku_ft_bn_update_max_msn(node, max_msn_in_path, bfe->child_to_read);
             }
         }
@@ -299,7 +299,7 @@ toku_pin_ftnode_with_dep_nodes(
         );
     invariant_zero(r);
     FTNODE node = (FTNODE) node_v;
-    if (lock_type != PL_READ && node->height > 0 && move_messages) {
+    if (lock_type != PL_READ && node->height() > 0 && move_messages) {
         toku_move_ftnode_messages_to_stale(ft, node);
     }
     *node_p = node;
@@ -331,8 +331,8 @@ cleanup:
 
 void toku_unpin_ftnode(FT ft, FTNODE node) {
     int r = toku_cachetable_unpin(ft->cf,
-                                  node->ct_pair,
-                                  static_cast<enum cachetable_dirty>(node->dirty),
+                                  node->ct_pair(),
+                                  static_cast<enum cachetable_dirty>(node->dirty()),
                                   make_ftnode_pair_attr(node));
     invariant_zero(r);
 }
@@ -342,8 +342,8 @@ toku_unpin_ftnode_read_only(FT ft, FTNODE node)
 {
     int r = toku_cachetable_unpin(
         ft->cf,
-        node->ct_pair,
-        (enum cachetable_dirty) node->dirty,
+        node->ct_pair(),
+        (enum cachetable_dirty) node->dirty(),
         make_invalid_pair_attr()
         );
     assert(r==0);
