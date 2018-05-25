@@ -119,21 +119,21 @@ static void setup_dn(enum ftnode_verify_type bft,
             fd, make_blocknum(20), 0 /*pass zero for hash*/, dn, ndd, &bfe);
         invariant(r == 0);
         // invariant all bp's are compressed or on disk.
-        for (int i = 0; i < (*dn)->n_children; i++) {
+        for (int i = 0; i < (*dn)->n_children(); i++) {
             invariant(BP_STATE(*dn, i) == PT_COMPRESSED ||
                    BP_STATE(*dn, i) == PT_ON_DISK);
         }
         // if read_none, get rid of the compressed bp's
         if (bft == read_none) {
-            if ((*dn)->height == 0) {
+            if ((*dn)->height() == 0) {
                 toku_ftnode_pe_callback(*dn,
                                         make_pair_attr(0xffffffff),
                                         ft_h,
                                         def_pe_finalize_impl,
                                         nullptr);
                 // invariant all bp's are on disk
-                for (int i = 0; i < (*dn)->n_children; i++) {
-                    if ((*dn)->height == 0) {
+                for (int i = 0; i < (*dn)->n_children(); i++) {
+                    if ((*dn)->height() == 0) {
                         invariant(BP_STATE(*dn, i) == PT_ON_DISK);
                         invariant(is_BNULL(*dn, i));
                     } else {
@@ -150,7 +150,7 @@ static void setup_dn(enum ftnode_verify_type bft,
                 r = toku_ftnode_pf_callback(*dn, *ndd, &bfe, fd, &attr);
                 invariant(r == 0);
                 // invariant all bp's are available
-                for (int i = 0; i < (*dn)->n_children; i++) {
+                for (int i = 0; i < (*dn)->n_children(); i++) {
                     invariant(BP_STATE(*dn, i) == PT_AVAIL);
                 }
                 toku_ftnode_pe_callback(*dn,
@@ -158,7 +158,7 @@ static void setup_dn(enum ftnode_verify_type bft,
                                         ft_h,
                                         def_pe_finalize_impl,
                                         nullptr);
-                for (int i = 0; i < (*dn)->n_children; i++) {
+                for (int i = 0; i < (*dn)->n_children(); i++) {
                     // invariant all bp's are still available, because we touched
                     // the clock
                     invariant(BP_STATE(*dn, i) == PT_AVAIL);
@@ -170,7 +170,7 @@ static void setup_dn(enum ftnode_verify_type bft,
                                         ft_h,
                                         def_pe_finalize_impl,
                                         nullptr);
-                for (int i = 0; i < (*dn)->n_children; i++) {
+                for (int i = 0; i < (*dn)->n_children(); i++) {
                     invariant(BP_STATE(*dn, i) == PT_COMPRESSED);
                 }
             }
@@ -182,7 +182,7 @@ static void setup_dn(enum ftnode_verify_type bft,
         r = toku_ftnode_pf_callback(*dn, *ndd, &bfe, fd, &attr);
         invariant(r == 0);
         // invariant all bp's are available
-        for (int i = 0; i < (*dn)->n_children; i++) {
+        for (int i = 0; i < (*dn)->n_children(); i++) {
             invariant(BP_STATE(*dn, i) == PT_AVAIL);
         }
         // continue on with test
@@ -231,18 +231,18 @@ static void test_serialize_leaf_check_msn(enum ftnode_verify_type bft,
 #define PRESERIALIZE_MSN_ON_DISK ((MSN){MIN_MSN.msn + 42})
 #define POSTSERIALIZE_MSN_ON_DISK ((MSN){MIN_MSN.msn + 84})
 
-    sn.max_msn_applied_to_node_on_disk = PRESERIALIZE_MSN_ON_DISK;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 2;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn.n_children, sn.bp);
+    sn.max_msn_applied_to_node_on_disk() = PRESERIALIZE_MSN_ON_DISK;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 2;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkey;
-    sn.pivotkeys.create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
+    sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
     BP_STATE(&sn, 0) = PT_AVAIL;
     BP_STATE(&sn, 1) = PT_AVAIL;
     set_BLB(&sn, 0, toku_create_empty_bn());
@@ -296,14 +296,14 @@ static void test_serialize_leaf_check_msn(enum ftnode_verify_type bft,
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_read_from_disk == FT_LAYOUT_VERSION);
-    invariant(dn->height == 0);
-    invariant(dn->n_children >= 1);
-    invariant(dn->max_msn_applied_to_node_on_disk.msn ==
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_read_from_disk() == FT_LAYOUT_VERSION);
+    invariant(dn->height() == 0);
+    invariant(dn->n_children() >= 1);
+    invariant(dn->max_msn_applied_to_node_on_disk().msn ==
            POSTSERIALIZE_MSN_ON_DISK.msn);
     {
         // Man, this is way too ugly.  This entire test suite needs to be
@@ -313,7 +313,7 @@ static void test_serialize_leaf_check_msn(enum ftnode_verify_type bft,
         elts[0].init("a", "aval");
         elts[1].init("b", "bval");
         elts[2].init("x", "xval");
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         uint32_t last_i = 0;
         for (uint32_t bn = 0; bn < npartitions; ++bn) {
             invariant(BLB_MAX_MSN_APPLIED(dn, bn).msn ==
@@ -336,7 +336,7 @@ static void test_serialize_leaf_check_msn(enum ftnode_verify_type bft,
                               elts[last_i].le,
                               leafentry_memsize(curr_le)) == 0);
                 if (bn < npartitions - 1) {
-                    invariant(strcmp((char *)dn->pivotkeys.get_pivot(bn).data,
+                    invariant(strcmp((char *)dn->pivotkeys().get_pivot(bn).data,
                                   elts[last_i].keyp) <= 0);
                 }
                 // TODO for later, get a key comparison here as well
@@ -374,19 +374,19 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
                   S_IRWXU | S_IRWXG | S_IRWXO);
     invariant(fd >= 0);
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = nrows;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = nrows;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
 
-    MALLOC_N(sn.n_children, sn.bp);
-    sn.pivotkeys.create_empty();
-    for (int i = 0; i < sn.n_children; ++i) {
+    MALLOC_N(sn.n_children(), sn.bp());
+    sn.pivotkeys().create_empty();
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BLB(&sn, i, toku_create_empty_bn());
     }
@@ -406,7 +406,7 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
             void *curr_key;
             BLB_DATA(&sn, i)->fetch_key_and_len(0, &keylen, &curr_key);
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, curr_key, keylen),
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, curr_key, keylen),
                                    i);
         }
     }
@@ -453,10 +453,10 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
     {
         // Man, this is way too ugly.  This entire test suite needs to be
         // refactored.
@@ -472,7 +472,7 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
                     (char *)&key, sizeof(key), (char *)&val, sizeof(val));
             }
         }
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         uint32_t last_i = 0;
         for (uint32_t bn = 0; bn < npartitions; ++bn) {
             invariant(dest_ndd[bn].start > 0);
@@ -494,7 +494,7 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
                               les[last_i].le,
                               leafentry_memsize(curr_le)) == 0);
                 if (bn < npartitions - 1) {
-                    invariant(strcmp((char *)dn->pivotkeys.get_pivot(bn).data,
+                    invariant(strcmp((char *)dn->pivotkeys().get_pivot(bn).data,
                                   les[last_i].keyp) <= 0);
                 }
                 // TODO for later, get a key comparison here as well
@@ -531,19 +531,19 @@ static void test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft,
                   S_IRWXU | S_IRWXG | S_IRWXO);
     invariant(fd >= 0);
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 1;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 1;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
 
-    XMALLOC_N(sn.n_children, sn.bp);
-    sn.pivotkeys.create_empty();
-    for (int i = 0; i < sn.n_children; ++i) {
+    XMALLOC_N(sn.n_children(), sn.bp());
+    sn.pivotkeys().create_empty();
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BLB(&sn, i, toku_create_empty_bn());
     }
@@ -602,10 +602,10 @@ static void test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft,
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
     {
         // Man, this is way too ugly.  This entire test suite needs to be
         // refactored.
@@ -618,7 +618,7 @@ static void test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft,
                     (char *)&key, sizeof(key), (char *)&val, sizeof(val));
             }
         }
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         uint32_t last_i = 0;
         for (uint32_t bn = 0; bn < npartitions; ++bn) {
             invariant(dest_ndd[bn].start > 0);
@@ -641,7 +641,7 @@ static void test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft,
                               leafentry_memsize(curr_le)) == 0);
                 if (bn < npartitions - 1) {
                     uint32_t *CAST_FROM_VOIDP(pivot,
-                                              dn->pivotkeys.get_pivot(bn).data);
+                                              dn->pivotkeys().get_pivot(bn).data);
                     void *tmp = les[last_i].keyp;
                     uint32_t *CAST_FROM_VOIDP(item, tmp);
                     invariant(*pivot >= *item);
@@ -686,19 +686,19 @@ static void test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft,
                   S_IRWXU | S_IRWXG | S_IRWXO);
     invariant(fd >= 0);
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 1;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 1;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
 
-    MALLOC_N(sn.n_children, sn.bp);
-    sn.pivotkeys.create_empty();
-    for (int i = 0; i < sn.n_children; ++i) {
+    MALLOC_N(sn.n_children(), sn.bp());
+    sn.pivotkeys().create_empty();
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BLB(&sn, i, toku_create_empty_bn());
     }
@@ -755,10 +755,10 @@ static void test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft,
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
     {
         // Man, this is way too ugly.  This entire test suite needs to be
         // refactored.
@@ -775,7 +775,7 @@ static void test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft,
                 les[i].init(key, key_size, val, val_size);
             }
         }
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         invariant(npartitions == nrows);
         uint32_t last_i = 0;
         for (uint32_t bn = 0; bn < npartitions; ++bn) {
@@ -798,7 +798,7 @@ static void test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft,
                               les[last_i].le,
                               leafentry_memsize(curr_le)) == 0);
                 if (bn < npartitions - 1) {
-                    invariant(strcmp((char *)dn->pivotkeys.get_pivot(bn).data,
+                    invariant(strcmp((char *)dn->pivotkeys().get_pivot(bn).data,
                                   (char *)(les[last_i].keyp)) <= 0);
                 }
                 // TODO for later, get a key comparison here as well
@@ -838,16 +838,16 @@ static void test_serialize_leaf_with_empty_basement_nodes(
 
     int r;
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 7;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn.n_children, sn.bp);
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 7;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkeys[6];
     toku_fill_dbt(&pivotkeys[0], "A", 2);
     toku_fill_dbt(&pivotkeys[1], "a", 2);
@@ -855,8 +855,8 @@ static void test_serialize_leaf_with_empty_basement_nodes(
     toku_fill_dbt(&pivotkeys[3], "b", 2);
     toku_fill_dbt(&pivotkeys[4], "b", 2);
     toku_fill_dbt(&pivotkeys[5], "x", 2);
-    sn.pivotkeys.create_from_dbts(pivotkeys, 6);
-    for (int i = 0; i < sn.n_children; ++i) {
+    sn.pivotkeys().create_from_dbts(pivotkeys, 6);
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BLB(&sn, i, toku_create_empty_bn());
         BLB_SEQINSERT(&sn, i) = 0;
@@ -907,13 +907,13 @@ static void test_serialize_leaf_with_empty_basement_nodes(
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_read_from_disk == FT_LAYOUT_VERSION);
-    invariant(dn->height == 0);
-    invariant(dn->n_children > 0);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_read_from_disk() == FT_LAYOUT_VERSION);
+    invariant(dn->height() == 0);
+    invariant(dn->n_children() > 0);
     {
         test_key_le_pair elts[3];
 
@@ -923,7 +923,7 @@ static void test_serialize_leaf_with_empty_basement_nodes(
         elts[0].init("a", "aval");
         elts[1].init("b", "bval");
         elts[2].init("x", "xval");
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         uint32_t last_i = 0;
         for (uint32_t bn = 0; bn < npartitions; ++bn) {
             invariant(dest_ndd[bn].start > 0);
@@ -944,7 +944,7 @@ static void test_serialize_leaf_with_empty_basement_nodes(
                               elts[last_i].le,
                               leafentry_memsize(curr_le)) == 0);
                 if (bn < npartitions - 1) {
-                    invariant(strcmp((char *)dn->pivotkeys.get_pivot(bn).data,
+                    invariant(strcmp((char *)dn->pivotkeys().get_pivot(bn).data,
                                   (char *)(elts[last_i].keyp)) <= 0);
                 }
                 // TODO for later, get a key comparison here as well
@@ -982,22 +982,22 @@ static void test_serialize_leaf_with_multiple_empty_basement_nodes(
 
     int r;
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 4;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn.n_children, sn.bp);
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 4;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkeys[3];
     toku_fill_dbt(&pivotkeys[0], "A", 2);
     toku_fill_dbt(&pivotkeys[1], "A", 2);
     toku_fill_dbt(&pivotkeys[2], "A", 2);
-    sn.pivotkeys.create_from_dbts(pivotkeys, 3);
-    for (int i = 0; i < sn.n_children; ++i) {
+    sn.pivotkeys().create_from_dbts(pivotkeys, 3);
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BLB(&sn, i, toku_create_empty_bn());
     }
@@ -1045,15 +1045,15 @@ static void test_serialize_leaf_with_multiple_empty_basement_nodes(
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_read_from_disk == FT_LAYOUT_VERSION);
-    invariant(dn->height == 0);
-    invariant(dn->n_children == 1);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_read_from_disk() == FT_LAYOUT_VERSION);
+    invariant(dn->height() == 0);
+    invariant(dn->n_children() == 1);
     {
-        const uint32_t npartitions = dn->n_children;
+        const uint32_t npartitions = dn->n_children();
         for (uint32_t i = 0; i < npartitions; ++i) {
             invariant(dest_ndd[i].start > 0);
             invariant(dest_ndd[i].size > 0);
@@ -1093,18 +1093,18 @@ static void test_serialize_nonleaf(enum ftnode_verify_type bft, bool do_clone) {
     int r;
 
     //    source_ft.fd=fd;
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 1;
-    sn.n_children = 2;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(2, sn.bp);
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 1;
+    sn.n_children() = 2;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(2, sn.bp());
     DBT pivotkey;
-    sn.pivotkeys.create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
+    sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
     BP_BLOCKNUM(&sn, 0).b = 30;
     BP_BLOCKNUM(&sn, 1).b = 35;
     BP_STATE(&sn, 0) = PT_AVAIL;
@@ -1203,15 +1203,15 @@ static void test_serialize_nonleaf(enum ftnode_verify_type bft, bool do_clone) {
 
     setup_dn(bft, fd, ft_h, &dn, &dest_ndd);
 
-    invariant(dn->blocknum.b == 20);
+    invariant(dn->blocknum().b == 20);
 
-    invariant(dn->layout_version == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_original == FT_LAYOUT_VERSION);
-    invariant(dn->layout_version_read_from_disk == FT_LAYOUT_VERSION);
-    invariant(dn->height == 1);
-    invariant(dn->n_children == 2);
-    invariant(strcmp((char *)dn->pivotkeys.get_pivot(0).data, "hello") == 0);
-    invariant(dn->pivotkeys.get_pivot(0).size == 6);
+    invariant(dn->layout_version() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_original() == FT_LAYOUT_VERSION);
+    invariant(dn->layout_version_read_from_disk() == FT_LAYOUT_VERSION);
+    invariant(dn->height() == 1);
+    invariant(dn->n_children() == 2);
+    invariant(strcmp((char *)dn->pivotkeys().get_pivot(0).data, "hello") == 0);
+    invariant(dn->pivotkeys().get_pivot(0).size == 6);
     invariant(BP_BLOCKNUM(dn, 0).b == 30);
     invariant(BP_BLOCKNUM(dn, 1).b == 35);
 

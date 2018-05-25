@@ -659,7 +659,7 @@ static void ftnode_finalize_split(FTNODE node, FTNODE B, MSN max_msn_applied_to_
     B->max_msn_applied_to_node_on_disk() = max_msn_applied_to_node;
 
     // The new node in the split inherits the oldest known reference xid
-    B->oldest_referenced_xid_known() = node->oldest_referenced_xid_known;
+    B->oldest_referenced_xid_known() = node->oldest_referenced_xid_known();
 
     node->dirty() = 1;
     B->dirty() = 1;
@@ -774,12 +774,12 @@ ftleaf_split(
                 num_children_in_b,
                 ft->h->layout_version,
                 ft->h->flags);
-            B->fullhash = fullhash;
+            B->fullhash() = fullhash;
         }
         else {
             B = *nodeb;
-            REALLOC_N(num_children_in_b,   B->bp);
-            B->n_children = num_children_in_b;
+            REALLOC_N(num_children_in_b,   B->bp());
+            B->n_children() = num_children_in_b;
             for (int i = 0; i < num_children_in_b; i++) {
                 BP_BLOCKNUM(B,i).b = 0;
                 BP_STATE(B,i) = PT_AVAIL;
@@ -816,7 +816,7 @@ ftleaf_split(
         for ( ; curr_src_bn_index < node->n_children(); curr_src_bn_index++, curr_dest_bn_index++) {
             destroy_basement_node(BLB(B, curr_dest_bn_index));
             set_BNULL(B, curr_dest_bn_index);
-            B->bp[curr_dest_bn_index] = (node->bp())[curr_src_bn_index];
+            (B->bp())[curr_dest_bn_index] = (node->bp())[curr_src_bn_index];
         }
         if (curr_dest_bn_index < B->n_children()) {
             // B already has an empty basement node here.
@@ -830,7 +830,7 @@ ftleaf_split(
         // the child index in the original node that corresponds to the
         // first node in the right node of the split
         int split_idx = num_left_bns - (split_on_boundary ? 0 : 1);
-        node->pivotkeys().split_at(split_idx, &B->pivotkeys);
+        node->pivotkeys().split_at(split_idx, &B->pivotkeys());
         if (split_on_boundary && num_left_bns < node->n_children() && splitk) {
             toku_copyref_dbt(splitk, node->pivotkeys().get_pivot(num_left_bns - 1));
         } else if (splitk) {
@@ -886,12 +886,12 @@ ft_nonleaf_split(
             // slide the bp over
             destroy_nonleaf_childinfo(BNC(B, targchild));
             // now move the bp over
-            B->bp[targchild] = (node->bp())[i];
+            (B->bp())[targchild] = (node->bp())[i];
             memset(&(node->bp())[i], 0, sizeof((node->bp())[0]));
         }
 
         // the split key for our parent is the rightmost pivot key in node
-        node->pivotkeys().split_at(n_children_in_a, &B->pivotkeys);
+        node->pivotkeys().split_at(n_children_in_a, &B->pivotkeys());
         toku_clone_dbt(splitk, node->pivotkeys().get_pivot(n_children_in_a - 1));
         node->pivotkeys().delete_at(n_children_in_a - 1);
 

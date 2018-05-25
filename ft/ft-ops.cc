@@ -706,7 +706,7 @@ void toku_ftnode_flush_callback(CACHEFILE UU(cachefile),
     FTNODE ftnode = (FTNODE)ftnode_v;
     FTNODE_DISK_DATA *ndd = (FTNODE_DISK_DATA *)disk_data;
     assert(ftnode->blocknum().b == blocknum.b);
-    int height = ftnode()->height;
+    int height = ftnode->height();
     if (write_me) {
         toku_ftnode_assert_fully_in_memory(ftnode);
         if (height > 0 && !is_clone) {
@@ -845,8 +845,8 @@ int toku_ftnode_fetch_callback(CACHEFILE UU(cachefile),
 
     if (r == 0) {
         *sizep = make_ftnode_pair_attr(*node);
-        (*node)->ct_pair = p;
-        *dirtyp = (*node)->dirty;  // deserialize could mark the node as dirty
+        (*node)->ct_pair() = p;
+        *dirtyp = (*node)->dirty();  // deserialize could mark the node as dirty
                                    // (presumably for upgrade)
     }
     return r;
@@ -1369,10 +1369,10 @@ ft_init_new_root(FT ft, FTNODE oldroot, FTNODE *newrootp)
 {
     FTNODE newroot;
 
-    BLOCKNUM old_blocknum = oldroot->blocknum;
-    uint32_t old_fullhash = oldroot->fullhash;
+    BLOCKNUM old_blocknum = oldroot->blocknum();
+    uint32_t old_fullhash = oldroot->fullhash();
     
-    int new_height = oldroot->height+1;
+    int new_height = oldroot->height()+1;
     uint32_t new_fullhash;
     BLOCKNUM new_blocknum;
 
@@ -1395,11 +1395,11 @@ ft_init_new_root(FT ft, FTNODE oldroot, FTNODE *newrootp)
         ft->h->layout_version, 
         ft->h->flags
         );
-    newroot->fullhash = new_fullhash;
-    MSN msna = oldroot->max_msn_applied_to_node_on_disk;
-    newroot->max_msn_applied_to_node_on_disk = msna;
+    newroot->fullhash() = new_fullhash;
+    MSN msna = oldroot->max_msn_applied_to_node_on_disk();
+    newroot->max_msn_applied_to_node_on_disk() = msna;
     BP_STATE(newroot,0) = PT_AVAIL;
-    newroot->dirty = 1;
+    newroot->dirty() = 1;
 
     // Set the first child to have the new blocknum,
     // and then swap newroot with oldroot. The new root
@@ -1463,7 +1463,7 @@ static void inject_message_in_locked_node(
     // after us and get that message into our subtree before us.
     MSN msg_msn = { .msn = toku_sync_add_and_fetch(&ft->h->max_msn_in_ft.msn, 1) };
     ft_msg msg_with_msn(msg.kdbt(), msg.vdbt(), msg.type(), msg_msn, msg.xids());
-    paranoid_invariant(msg_with_msn.msn().msn > node->max_msn_applied_to_node_on_disk.msn());
+    paranoid_invariant(msg_with_msn.msn().msn > node->max_msn_applied_to_node_on_disk().msn);
 
     STAT64INFO_S stats_delta = { 0,0 };
     int64_t logical_rows_delta = 0;
@@ -1550,18 +1550,18 @@ static bool process_maybe_reactive_child(FT ft, FTNODE parent, FTNODE child, int
     case RE_FISSIBLE:
         {
             // We only have a read lock on the parent.  We need to drop both locks, and get write locks.
-            BLOCKNUM parent_blocknum = parent->blocknum;
+            BLOCKNUM parent_blocknum = parent->blocknum();
             uint32_t parent_fullhash = toku_cachetable_hash(ft->cf, parent_blocknum);
-            int parent_height = parent->height;
-            int parent_n_children = parent->n_children;
+            int parent_height = parent->height();
+            int parent_n_children = parent->n_children();
             toku_unpin_ftnode_read_only(ft, child);
             toku_unpin_ftnode_read_only(ft, parent);
             ftnode_fetch_extra bfe;
             bfe.create_for_full_read(ft);
             FTNODE newparent, newchild;
             toku_pin_ftnode(ft, parent_blocknum, parent_fullhash, &bfe, PL_WRITE_CHEAP, &newparent, true);
-            if (newparent->height != parent_height || newparent->n_children != parent_n_children ||
-                childnum >= newparent->n_children || toku_bnc_n_entries(BNC(newparent, childnum))) {
+            if (newparent->height() != parent_height || newparent->n_children() != parent_n_children ||
+                childnum >= newparent->n_children() || toku_bnc_n_entries(BNC(newparent, childnum))) {
                 // If the height changed or childnum is now off the end, something clearly got split or merged out from under us.
                 // If something got injected in this node, then it got split or merged and we shouldn't be splitting it.
                 // But we already unpinned the child so we need to have the caller re-try the pins.
@@ -1577,9 +1577,9 @@ static bool process_maybe_reactive_child(FT ft, FTNODE parent, FTNODE child, int
             newre = toku_ftnode_get_reactivity(ft, newchild);
             if (newre == RE_FISSIBLE) {
                 enum split_mode split_mode;
-                if (newparent->height == 1 && (loc & LEFT_EXTREME) && childnum == 0) {
+                if (newparent->height() == 1 && (loc & LEFT_EXTREME) && childnum == 0) {
                     split_mode = SPLIT_RIGHT_HEAVY;
-                } else if (newparent->height == 1 && (loc & RIGHT_EXTREME) && childnum == newparent->n_children - 1) {
+                } else if (newparent->height() == 1 && (loc & RIGHT_EXTREME) && childnum == newparent->n_children() - 1) {
                     split_mode = SPLIT_LEFT_HEAVY;
                 } else {
                     split_mode = SPLIT_EVENLY;
@@ -1595,16 +1595,16 @@ static bool process_maybe_reactive_child(FT ft, FTNODE parent, FTNODE child, int
         }
     case RE_FUSIBLE:
         {
-            if (parent->height == 1) {
+            if (parent->height() == 1) {
                 // prevent re-merging of recently unevenly-split nodes
                 if (((loc & LEFT_EXTREME) && childnum <= 1) ||
-                    ((loc & RIGHT_EXTREME) && childnum >= parent->n_children - 2)) {
+                    ((loc & RIGHT_EXTREME) && childnum >= parent->n_children() - 2)) {
                     return false;
                 }
             }
 
-            int parent_height = parent->height;
-            BLOCKNUM parent_blocknum = parent->blocknum;
+            int parent_height = parent->height();
+            BLOCKNUM parent_blocknum = parent->blocknum();
             uint32_t parent_fullhash = toku_cachetable_hash(ft->cf, parent_blocknum);
             toku_unpin_ftnode_read_only(ft, child);
             toku_unpin_ftnode_read_only(ft, parent);
@@ -1612,7 +1612,7 @@ static bool process_maybe_reactive_child(FT ft, FTNODE parent, FTNODE child, int
             bfe.create_for_full_read(ft);
             FTNODE newparent, newchild;
             toku_pin_ftnode(ft, parent_blocknum, parent_fullhash, &bfe, PL_WRITE_CHEAP, &newparent, true);
-            if (newparent->height != parent_height || childnum >= newparent->n_children) {
+            if (newparent->height() != parent_height || childnum >= newparent->n_children()) {
                 // looks like this is the root and it got merged, let's just start over (like in the split case above)
                 toku_unpin_ftnode_read_only(ft, newparent);
                 return true;
@@ -1621,7 +1621,7 @@ static bool process_maybe_reactive_child(FT ft, FTNODE parent, FTNODE child, int
             child_fullhash = compute_child_fullhash(ft->cf, newparent, childnum);
             toku_pin_ftnode_with_dep_nodes(ft, child_blocknum, child_fullhash, &bfe, PL_READ, 1, &newparent, &newchild, true);
             newre = toku_ftnode_get_reactivity(ft, newchild);
-            if (newre == RE_FUSIBLE && newparent->n_children >= 2) {
+            if (newre == RE_FUSIBLE && newparent->n_children() >= 2) {
                 toku_unpin_ftnode_read_only(ft, newchild);
                 toku_ft_merge_child(ft, newparent, childnum);
             } else {
@@ -1724,7 +1724,7 @@ static void push_something_in_subtree(
 //   If the birdie doesn't say to promote, we try maybe_get_and_pin.  If we get the node cheaply, and it's dirty, we promote anyway.
 {
     toku_ftnode_assert_fully_in_memory(subtree_root);
-    if (should_inject_in_node(loc, subtree_root->height, depth)) {
+    if (should_inject_in_node(loc, subtree_root->height(), depth)) {
         switch (depth) {
         case 0:
             FT_STATUS_INC(FT_PRO_NUM_INJECT_DEPTH_0, 1); break;
@@ -1742,8 +1742,8 @@ static void push_something_in_subtree(
         // because promotion would not chose to inject directly into this leaf
         // otherwise. We explicitly skip the root node because then we don't have
         // to worry about changing the rightmost blocknum when the root splits.
-        if (subtree_root->height == 0 && loc == RIGHT_EXTREME && subtree_root->blocknum.b != ft->h->root_blocknum.b) {
-            ft_verify_or_set_rightmost_blocknum(ft, subtree_root->blocknum);
+        if (subtree_root->height() == 0 && loc == RIGHT_EXTREME && subtree_root->blocknum().b != ft->h->root_blocknum.b) {
+            ft_verify_or_set_rightmost_blocknum(ft, subtree_root->blocknum());
         }
         inject_message_in_locked_node(ft, subtree_root, target_childnum, msg, flow_deltas, gc_info);
     } else {
@@ -1767,13 +1767,13 @@ static void push_something_in_subtree(
         seqinsert_loc next_loc;
         if ((loc & LEFT_EXTREME) && childnum == 0) {
             next_loc = LEFT_EXTREME;
-        } else if ((loc & RIGHT_EXTREME) && childnum == subtree_root->n_children - 1) {
+        } else if ((loc & RIGHT_EXTREME) && childnum == subtree_root->n_children() - 1) {
             next_loc = RIGHT_EXTREME;
         } else {
             next_loc = NEITHER_EXTREME;
         }
 
-        if (next_loc == NEITHER_EXTREME && subtree_root->height <= 1) {
+        if (next_loc == NEITHER_EXTREME && subtree_root->height() <= 1) {
             // Never promote to leaf nodes except on the edges
             FT_STATUS_INC(FT_PRO_NUM_STOP_H1, 1);
             goto relock_and_push_here;
@@ -1786,7 +1786,7 @@ static void push_something_in_subtree(
 
             FTNODE child;
             {
-                const int child_height = subtree_root->height - 1;
+                const int child_height = subtree_root->height() - 1;
                 const int child_depth = depth + 1;
                 // If we're locking a leaf, or a height 1 node or depth 2
                 // node in the middle, we know we won't promote further
@@ -1820,7 +1820,7 @@ static void push_something_in_subtree(
                     if (toku_ftnode_fully_in_memory(child)) {
                         // toku_pin_ftnode... touches the clock but toku_maybe_pin_ftnode... doesn't.
                         // This prevents partial eviction.
-                        for (int i = 0; i < child->n_children; ++i) {
+                        for (int i = 0; i < child->n_children(); ++i) {
                             BP_TOUCH_CLOCK(child, i);
                         }
                     } else {
@@ -1833,7 +1833,7 @@ static void push_something_in_subtree(
             paranoid_invariant_notnull(child);
 
             if (!just_did_split_or_merge) {
-                BLOCKNUM subtree_root_blocknum = subtree_root->blocknum;
+                BLOCKNUM subtree_root_blocknum = subtree_root->blocknum();
                 uint32_t subtree_root_fullhash = toku_cachetable_hash(ft->cf, subtree_root_blocknum);
                 const bool did_split_or_merge = process_maybe_reactive_child(ft, subtree_root, child, childnum, loc);
                 if (did_split_or_merge) {
@@ -1847,7 +1847,7 @@ static void push_something_in_subtree(
                 }
             }
 
-            if (next_loc != NEITHER_EXTREME || child->dirty || toku_bnc_should_promote(ft, bnc)) {
+            if (next_loc != NEITHER_EXTREME || child->dirty() || toku_bnc_should_promote(ft, bnc)) {
                 push_something_in_subtree(ft, child, -1, msg, flow_deltas, gc_info, depth + 1, next_loc, false);
                 toku_sync_fetch_and_add(&bnc->flow[0], flow_deltas[0]);
                 // The recursive call unpinned the child, but
@@ -1869,7 +1869,7 @@ static void push_something_in_subtree(
         {
             // Right now we have a read lock on subtree_root, but we want
             // to inject into it so we get a write lock instead.
-            BLOCKNUM subtree_root_blocknum = subtree_root->blocknum;
+            BLOCKNUM subtree_root_blocknum = subtree_root->blocknum();
             uint32_t subtree_root_fullhash = toku_cachetable_hash(ft->cf, subtree_root_blocknum);
             toku_unpin_ftnode_read_only(ft, subtree_root);
             switch (depth) {
@@ -2042,7 +2042,7 @@ static LEAFENTRY ft_leaf_leftmost_le_and_key(FTNODE leaf, DBT *leftmost_key)
 // Requires: Leaf is fully in memory and pinned for read or write.
 // Return: leafentry if it exists, nullptr otherwise
 {
-    for (int i = 0; i < leaf->n_children; i++) {
+    for (int i = 0; i < leaf->n_children(); i++) {
         BASEMENTNODE bn = BLB(leaf, i);
         if (bn->data_buffer.num_klpairs() > 0) {
             // Get the first (leftmost) leafentry and its key
@@ -2058,7 +2058,7 @@ static LEAFENTRY ft_leaf_rightmost_le_and_key(FTNODE leaf, DBT *rightmost_key)
 // Requires: Leaf is fully in memory and pinned for read or write.
 // Return: leafentry if it exists, nullptr otherwise
 {
-    for (int i = leaf->n_children - 1; i >= 0; i--) {
+    for (int i = leaf->n_children() - 1; i >= 0; i--) {
         BASEMENTNODE bn = BLB(leaf, i);
         size_t num_les = bn->data_buffer.num_klpairs();
         if (num_les > 0) {
@@ -2089,19 +2089,19 @@ static int ft_leaf_get_relative_key_pos(FT ft, FTNODE leaf, const DBT *key, bool
         return -1;
     }
     // We have a rightmost leafentry, so it must exist in some child node
-    invariant(leaf->n_children > 0);
+    invariant(leaf->n_children() > 0);
 
     int relative_pos = 0;
     int c = ft_compare_keys(ft, key, &rightmost_key);
     if (c > 0) {
         relative_pos = 1;
-        *target_childnum = leaf->n_children - 1;
+        *target_childnum = leaf->n_children() - 1;
     } else if (c == 0) {
         if (nondeleted_key_found != nullptr && !le_latest_is_del(rightmost_le)) {
             *nondeleted_key_found = true;
         }
         relative_pos = 0;
-        *target_childnum = leaf->n_children - 1;
+        *target_childnum = leaf->n_children() - 1;
     } else {
         // The key is less than the rightmost. It may still be in bounds if it's >= the leftmost.
         DBT leftmost_key;
@@ -2185,7 +2185,7 @@ static int ft_maybe_insert_into_rightmost_leaf(FT ft, DBT *key, DBT *val, XIDS m
 
     // The rightmost blocknum never chances once it is initialized to something
     // other than null. Verify that the pinned node has the correct blocknum.
-    invariant(rightmost_leaf->blocknum.b == rightmost_blocknum.b);
+    invariant(rightmost_leaf->blocknum().b == rightmost_blocknum.b);
 
     // If the rightmost leaf is reactive, bail out out and let the normal promotion pass
     // take care of it. This also ensures that if any of our ancestors are reactive,
@@ -3599,7 +3599,7 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
     int r = ft_search_node(ft_handle, childnode, search, bfe.child_to_read, getf, getf_v, doprefetch, ftcursor, &next_unlockers, &next_ancestors, bounds, can_bulk_fetch);
     if (r!=TOKUDB_TRY_AGAIN) {
         // maybe prefetch the next child
-        if (r == 0 && node->height == 1) {
+        if (r == 0 && node->height() == 1) {
             ft_node_maybe_prefetch(ft_handle, node, childnum, ftcursor, doprefetch);
         }
 

@@ -2039,7 +2039,7 @@ deserialize_and_upgrade_leaf_node(FTNODE node,
     // basement node.
     node->n_children() = 1;
     XMALLOC_N(node->n_children(), node->bp());
-    node->pivotkeys.create_empty();
+    node->pivotkeys().create_empty();
 
     // Create one basement node to contain all the leaf entries by
     // setting up the single partition and updating the bfe.

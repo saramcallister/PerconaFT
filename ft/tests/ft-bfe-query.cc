@@ -72,7 +72,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_ON_DISK);
     invariant(BP_STATE(dn, 2) == PT_ON_DISK);
@@ -91,7 +91,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_AVAIL);
     invariant(BP_STATE(dn, 1) == PT_AVAIL);
     invariant(BP_STATE(dn, 2) == PT_AVAIL);
@@ -115,7 +115,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_AVAIL);
     invariant(BP_STATE(dn, 2) == PT_AVAIL);
@@ -139,7 +139,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_AVAIL);
     invariant(BP_STATE(dn, 2) == PT_ON_DISK);
@@ -162,7 +162,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_ON_DISK);
     invariant(BP_STATE(dn, 2) == PT_AVAIL);
@@ -185,7 +185,7 @@ static void test_prefetch_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_AVAIL);
     invariant(BP_STATE(dn, 1) == PT_ON_DISK);
     invariant(BP_STATE(dn, 2) == PT_ON_DISK);
@@ -235,7 +235,7 @@ static void test_subset_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_ON_DISK);
     invariant(BP_STATE(dn, 2) == PT_AVAIL);
@@ -264,7 +264,7 @@ static void test_subset_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_ON_DISK);
     invariant(BP_STATE(dn, 1) == PT_AVAIL);
     invariant(BP_STATE(dn, 2) == PT_AVAIL);
@@ -292,7 +292,7 @@ static void test_subset_read(int fd, FT_HANDLE UU(ft), FT ft_h) {
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, &dn, &ndd, &bfe);
     invariant(r == 0);
-    invariant(dn->n_children == 3);
+    invariant(dn->n_children() == 3);
     invariant(BP_STATE(dn, 0) == PT_AVAIL);
     invariant(BP_STATE(dn, 1) == PT_AVAIL);
     invariant(BP_STATE(dn, 2) == PT_ON_DISK);
@@ -330,24 +330,24 @@ static void test_prefetching(void) {
     int r;
 
     //    source_ft.fd=fd;
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 1;
-    sn.n_children = 3;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 1;
+    sn.n_children() = 3;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
 
     uint64_t key1 = 100;
     uint64_t key2 = 200;
 
-    MALLOC_N(sn.n_children, sn.bp);
+    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkeys[2];
     toku_fill_dbt(&pivotkeys[0], &key1, sizeof(key1));
     toku_fill_dbt(&pivotkeys[1], &key2, sizeof(key2));
-    sn.pivotkeys.create_from_dbts(pivotkeys, 2);
+    sn.pivotkeys().create_from_dbts(pivotkeys, 2);
     BP_BLOCKNUM(&sn, 0).b = 30;
     BP_BLOCKNUM(&sn, 1).b = 35;
     BP_BLOCKNUM(&sn, 2).b = 40;

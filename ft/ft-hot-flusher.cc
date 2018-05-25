@@ -124,9 +124,9 @@ hot_update_flusher_keys(FTNODE parent,
 {
     // Update maximum current key if the child is NOT the rightmost
     // child node.
-    if (childnum < (parent->n_children - 1)) {
+    if (childnum < (parent->n_children() - 1)) {
         toku_destroy_dbt(&flusher->max_current_key);
-        toku_clone_dbt(&flusher->max_current_key, parent->pivotkeys.get_pivot(childnum));
+        toku_clone_dbt(&flusher->max_current_key, parent->pivotkeys().get_pivot(childnum));
     }
 }
 
@@ -144,7 +144,7 @@ hot_pick_child(FT ft,
 
     // Whichever subtree we choose to recurse into, it is a fraction
     // of the current parent.
-    flusher->sub_tree_size /= parent->n_children;
+    flusher->sub_tree_size /= parent->n_children();
 
     // Update the precentage complete, using our new sub tree size AND
     // the number of children we have already flushed.
@@ -178,7 +178,7 @@ hot_pick_child_after_split(FT ft,
     int childnum = hot_just_pick_child(ft, parent, flusher);
     assert(childnum == childnuma || childnum == childnumb);
     hot_update_flusher_keys(parent, childnum, flusher);
-    if (parent->height == 1) {
+    if (parent->height() == 1) {
         // We don't want to recurse into a leaf node, but if we return
         // anything valid, ft_split_child will try to go there, so we
         // return -1 to allow ft_split_child to have its default
@@ -270,7 +270,7 @@ toku_ft_hot_optimize(FT_HANDLE ft_handle, DBT* left, DBT* right,
         // Prepare HOT diagnostics.
         if (loop_count == 0) {
             // The first time through, capture msn from root
-            msn_at_start_of_hot = root->max_msn_applied_to_node_on_disk;
+            msn_at_start_of_hot = root->max_msn_applied_to_node_on_disk();
         }
 
         loop_count++;
@@ -288,7 +288,7 @@ toku_ft_hot_optimize(FT_HANDLE ft_handle, DBT* left, DBT* right,
 
         // This should recurse to the bottom of the tree and then
         // return.
-        if (root->height > 0) {
+        if (root->height() > 0) {
             toku_ft_flush_some_child(ft_handle->ft, root, &advice);
         } else {
             // Since there are no children to flush, we should abort

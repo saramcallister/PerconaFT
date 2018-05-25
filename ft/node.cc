@@ -50,20 +50,20 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
     paranoid_invariant(layout_version != 0);
     paranoid_invariant(height >= 0);
 
-    n->max_msn_applied_to_node_on_disk = ZERO_MSN;    // correct value for root node, harmless for others
-    n->flags = flags;
-    n->blocknum = blocknum;
-    n->layout_version               = layout_version;
-    n->layout_version_original = layout_version;
-    n->layout_version_read_from_disk = layout_version;
-    n->height = height;
-    n->pivotkeys.create_empty();
-    n->bp = 0;
-    n->n_children = num_children;
-    n->oldest_referenced_xid_known = TXNID_NONE;
+    n->max_msn_applied_to_node_on_disk() = ZERO_MSN;    // correct value for root node, harmless for others
+    n->flags() = flags;
+    n->blocknum() = blocknum;
+    n->layout_version()               = layout_version;
+    n->layout_version_original() = layout_version;
+    n->layout_version_read_from_disk() = layout_version;
+    n->height() = height;
+    n->pivotkeys().create_empty();
+    n->bp() = 0;
+    n->n_children() = num_children;
+    n->oldest_referenced_xid_known() = TXNID_NONE;
 
     if (num_children > 0) {
-        XMALLOC_N(num_children, n->bp);
+        XMALLOC_N(num_children, n->bp());
         for (int i = 0; i < num_children; i++) {
             BP_BLOCKNUM(n,i).b=0;
             BP_STATE(n,i) = PT_INVALID;
@@ -77,7 +77,7 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
             }
         }
     }
-    n->dirty = 1;  // special case exception, it's okay to mark as dirty because the basements are empty
+    n->dirty() = 1;  // special case exception, it's okay to mark as dirty because the basements are empty
 
     toku_ft_status_note_ftnode(height, true);
 }
@@ -953,7 +953,7 @@ void toku_ftnode_leaf_rebalance(FTNODE node, unsigned int basementnodesize) {
     invariant(num_children > 0);
 
     node->n_children() = num_children;
-    XCALLOC_N(num_children, node->bp);             // allocate pointers to basements (bp)
+    XCALLOC_N(num_children, node->bp());             // allocate pointers to basements (bp)
     for (int i = 0; i < num_children; i++) {
         set_BLB(node, i, toku_create_empty_bn());  // allocate empty basements and set bp pointers
     }
@@ -1132,8 +1132,8 @@ long toku_bnc_memory_used(NONLEAF_CHILDINFO bnc) {
 void toku_ft_nonleaf_append_child(FTNODE node, FTNODE child, const DBT *pivotkey) {
     int childnum = node->n_children();
     node->n_children()++;
-    REALLOC_N(node->n_children(), node->bp);
-    BP_BLOCKNUM(node,childnum) = child->blocknum;
+    REALLOC_N(node->n_children(), node->bp());
+    BP_BLOCKNUM(node,childnum) = child->blocknum();
     BP_STATE(node,childnum) = PT_AVAIL;
     BP_WORKDONE(node, childnum)   = 0;
     set_BNC(node, childnum, toku_create_empty_nl());

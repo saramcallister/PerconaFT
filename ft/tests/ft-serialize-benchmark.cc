@@ -88,23 +88,23 @@ static void test_serialize_leaf(int valsize,
 
     XCALLOC(sn);
 
-    sn->max_msn_applied_to_node_on_disk.msn = 0;
-    sn->flags = 0x11223344;
-    sn->blocknum.b = 20;
-    sn->layout_version = FT_LAYOUT_VERSION;
-    sn->layout_version_original = FT_LAYOUT_VERSION;
-    sn->height = 0;
-    sn->n_children = 8;
-    sn->dirty = 1;
-    sn->oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn->n_children, sn->bp);
-    sn->pivotkeys.create_empty();
-    for (int i = 0; i < sn->n_children; ++i) {
+    sn->max_msn_applied_to_node_on_disk().msn = 0;
+    sn->flags() = 0x11223344;
+    sn->blocknum().b = 20;
+    sn->layout_version() = FT_LAYOUT_VERSION;
+    sn->layout_version_original() = FT_LAYOUT_VERSION;
+    sn->height() = 0;
+    sn->n_children() = 8;
+    sn->dirty() = 1;
+    sn->oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn->n_children(), sn->bp());
+    sn->pivotkeys().create_empty();
+    for (int i = 0; i < sn->n_children(); ++i) {
         BP_STATE(sn, i) = PT_AVAIL;
         set_BLB(sn, i, toku_create_empty_bn());
     }
-    int nperbn = nelts / sn->n_children;
-    for (int ck = 0; ck < sn->n_children; ++ck) {
+    int nperbn = nelts / sn->n_children();
+    for (int ck = 0; ck < sn->n_children(); ++ck) {
         long k;
         for (long i = 0; i < nperbn; ++i) {
             k = ck * nperbn + i;
@@ -121,7 +121,7 @@ static void test_serialize_leaf(int valsize,
         }
         if (ck < 7) {
             DBT pivotkey;
-            sn->pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)),
+            sn->pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)),
                                     ck);
         }
     }
@@ -173,7 +173,7 @@ static void test_serialize_leaf(int valsize,
     for (int i = 0; i < ser_runs; i++) {
         gettimeofday(&t[0], NULL);
         ndd = NULL;
-        sn->dirty = 1;
+        sn->dirty() = 1;
         r = toku_serialize_ftnode_to(
             fd, make_blocknum(20), sn, &ndd, true, ft->ft, false);
         invariant(r == 0);
@@ -258,18 +258,18 @@ static void test_serialize_nonleaf(int valsize,
     int r;
 
     //    source_ft.fd=fd;
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 1;
-    sn.n_children = 8;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn.n_children, sn.bp);
-    sn.pivotkeys.create_empty();
-    for (int i = 0; i < sn.n_children; ++i) {
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 1;
+    sn.n_children() = 8;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn.n_children(), sn.bp());
+    sn.pivotkeys().create_empty();
+    for (int i = 0; i < sn.n_children(); ++i) {
         BP_BLOCKNUM(&sn, i).b = 30 + (i * 5);
         BP_STATE(&sn, i) = PT_AVAIL;
         set_BNC(&sn, i, toku_create_empty_nl());
@@ -282,7 +282,7 @@ static void test_serialize_nonleaf(int valsize,
     toku::comparator cmp;
     cmp.create(long_key_cmp, nullptr);
     int nperchild = nelts / 8;
-    for (int ck = 0; ck < sn.n_children; ++ck) {
+    for (int ck = 0; ck < sn.n_children(); ++ck) {
         long k;
         NONLEAF_CHILDINFO bnc = BNC(&sn, ck);
         for (long i = 0; i < nperchild; ++i) {
@@ -309,7 +309,7 @@ static void test_serialize_nonleaf(int valsize,
         }
         if (ck < 7) {
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), ck);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), ck);
         }
     }
 

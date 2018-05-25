@@ -58,13 +58,13 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 void
 initialize_ftnode(FTNODE node, BLOCKNUM blocknum)
 {
-    node->fullhash = 0xDEADBEEF; // <CER> Is this 'spoof' ok?
-    node->blocknum = blocknum;
-    node->dirty = 0;
-    node->bp = NULL;
+    node->fullhash() = 0xDEADBEEF; // <CER> Is this 'spoof' ok?
+    node->blocknum() = blocknum;
+    node->dirty() = 0;
+    node->bp() = NULL;
     // <CER> Can we use this initialization as a correctness assert in
     // a later function?
-    node->layout_version_read_from_disk = 0;
+    node->layout_version_read_from_disk() = 0;
 }
 
 /************************
@@ -97,7 +97,7 @@ read_and_check_version(FTNODE node, struct rbuf *rb)
 {
     int r = 0;
     int version = rbuf_int(rb);
-    node->layout_version_read_from_disk = version;
+    node->layout_version_read_from_disk() = version;
     if (version < FT_LAYOUT_MIN_SUPPORTED_VERSION) {
         r = 1; // TODO: Better error reporting.
     }
@@ -110,10 +110,10 @@ read_and_check_version(FTNODE node, struct rbuf *rb)
 void
 read_node_info(FTNODE node, struct rbuf *rb, int version)
 {
-    node->layout_version = version;
-    node->layout_version_original = rbuf_int(rb);
-    node->build_id = rbuf_int(rb);
-    node->n_children = rbuf_int(rb);
+    node->layout_version() = version;
+    node->layout_version_original() = rbuf_int(rb);
+    node->build_id() = rbuf_int(rb);
+    node->n_children() = rbuf_int(rb);
 }
 
 // Allocates the partitions based on the given node's nubmer
@@ -123,11 +123,11 @@ read_node_info(FTNODE node, struct rbuf *rb, int version)
 void
 allocate_and_read_partition_offsets(FTNODE node, struct rbuf *rb, FTNODE_DISK_DATA *ndd)
 {
-    XMALLOC_N(node->n_children, node->bp);
+    XMALLOC_N(node->n_children(), node->bp());
     // TODO: Fix this to use xmalloc_n
-    XMALLOC_N(node->n_children, *ndd);
+    XMALLOC_N(node->n_children(), *ndd);
     // Read the partition locations.
-    for (int i = 0; i < node->n_children; i++) {
+    for (int i = 0; i < node->n_children(); i++) {
         BP_START(*ndd, i) = rbuf_int(rb);
         BP_SIZE (*ndd, i) = rbuf_int(rb);
     }
@@ -158,8 +158,8 @@ void
 read_legacy_node_info(FTNODE node, struct rbuf *rb, int version)
 {
     (void)rbuf_int(rb); // 1. nodesize
-    node->flags = rbuf_int(rb);    // 2. flags
-    node->height = rbuf_int(rb);   // 3. height
+    node->flags() = rbuf_int(rb);    // 2. flags
+    node->height() = rbuf_int(rb);   // 3. height
     
     // If the version is less than 14, there are two extra ints here.
     // we would need to ignore them if they are there.

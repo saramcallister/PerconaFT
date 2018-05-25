@@ -173,28 +173,28 @@ struct ftnode_buffer {
 class ftnode {
    private:
     // max_msn_applied that will be written to disk
-    MSN max_msn_applied_to_node_on_disk;
-    unsigned int flags;
+    MSN _max_msn_applied_to_node_on_disk;
+    unsigned int _flags;
     // Which block number is this node?
-    BLOCKNUM blocknum;
+    BLOCKNUM _blocknum;
     // What version of the data structure?
-    int layout_version;
+    int _layout_version;
     // different (<) from layout_version if upgraded from a previous version
     // (useful for debugging)
-    int layout_version_original;
+    int _layout_version_original;
     // transient, not serialized to disk, (useful for debugging)
-    int layout_version_read_from_disk;
+    int _layout_version_read_from_disk;
     // build_id (svn rev number) of software that wrote this node to disk
-    uint32_t build_id;
+    uint32_t _build_id;
     // height is always >= 0.  0 for leaf, >0 for nonleaf.
-    int height;
-    int dirty;
-    uint32_t fullhash;
+    int _height;
+    int _dirty;
+    uint32_t _fullhash;
 
     // for internal nodes, if n_children==fanout+1 then the tree needs to be
     // rebalanced. for leaf nodes, represents number of basement nodes
-    int n_children;
-    ftnode_pivot_keys pivotkeys;
+    int _n_children;
+    ftnode_pivot_keys _pivotkeys;
 
     // What's the oldest referenced xid that this node knows about? The real
     // oldest referenced xid might be younger, but this is our best estimate.
@@ -204,38 +204,39 @@ class ftnode {
     // A better heuristic would be the oldest live txnid, but we use this since
     // it still works well most of the time, and its readily available on the
     // inject code path.
-    TXNID oldest_referenced_xid_known;
+    TXNID _oldest_referenced_xid_known;
     // array of size n_children, consisting of ftnode partitions
     // each one is associated with a child  for internal nodes, the ith
     // partition corresponds to the ith message buffer for leaf nodes, the ith
     // partition corresponds to the ith basement node
-    struct ftnode_partition *bp;
-    struct ctpair *ct_pair;
+    struct ftnode_partition *_bp;
+    struct ctpair *_ct_pair;
 
    public:
-    MSN & max_msn_applied_to_node_on_disk() {
-        return max_msn_applied_to_node_on_disk;
+    MSN &max_msn_applied_to_node_on_disk() {
+        return _max_msn_applied_to_node_on_disk;
     }
-    BLOCKNUM & blocknum() { return blocknum; }
-    int & layout_version() { return layout_version; }
-    int & layout_version_original() { return layout_version_original; }
-    int & layout_version_read_from_disk() {
-        return layout_version_read_from_disk;
+    uint32_t &flags() { return _flags; }
+    BLOCKNUM &blocknum() { return _blocknum; }
+    int &layout_version() { return _layout_version; }
+    int &layout_version_original() { return _layout_version_original; }
+    int &layout_version_read_from_disk() {
+        return _layout_version_read_from_disk;
     }
-    uint32_t & build_id() { return build_id; }
-    int & height() { return height; }
-    int & dirty_status() { return dirty; }
-    uint32_t & fullhash() { return fullhash; }
-    int & n_children() { return n_children; }
-    ftnode_pivot_keys & pivotkeys() { return pivotkeys; }
-    TXNID & oldest_referenced_xid_known() {
-        return oldest_referenced_xid_known;
+    uint32_t &build_id() { return _build_id; }
+    int &height() { return _height; }
+    int &dirty() { return _dirty; }
+    uint32_t &fullhash() { return _fullhash; }
+    int &n_children() { return _n_children; }
+    ftnode_pivot_keys &pivotkeys() { return _pivotkeys; }
+    TXNID &oldest_referenced_xid_known() {
+        return _oldest_referenced_xid_known;
     }
-    struct ftnode_partition * & bp() {
-        return bp;
+    struct ftnode_partition *&bp() {
+        return _bp;
     }
-    struct ctpair * & ct_pair() {
-        return ct_pair;
+    struct ctpair *&ct_pair() {
+        return _ct_pair;
     }
 };
 typedef struct ftnode *FTNODE;
@@ -643,9 +644,9 @@ static inline void set_BSB(FTNODE node, int i, struct sub_block *sb) {
 
 // ftnode partition macros
 // BP stands for ftnode_partition
-#define BP_BLOCKNUM(node, i) ((node)->bp[i].blocknum)
-#define BP_STATE(node, i) ((node)->bp[i].state)
-#define BP_WORKDONE(node, i) ((node)->bp[i].workdone)
+#define BP_BLOCKNUM(node, i) (((node)->bp())[i].blocknum)
+#define BP_STATE(node, i) (((node)->bp())[i].state)
+#define BP_WORKDONE(node, i) (((node)->bp())[i].workdone)
 
 //
 // macros for managing a node's clock
@@ -657,15 +658,15 @@ static inline void set_BSB(FTNODE node, int i, struct sub_block *sb) {
 // that have a read lock on an internal node may try to touch the clock
 // simultaneously
 //
-#define BP_TOUCH_CLOCK(node, i) ((node)->bp[i].clock_count = 1)
-#define BP_SWEEP_CLOCK(node, i) ((node)->bp[i].clock_count = 0)
-#define BP_SHOULD_EVICT(node, i) ((node)->bp[i].clock_count == 0)
+#define BP_TOUCH_CLOCK(node, i) (((node)->bp())[i].clock_count = 1)
+#define BP_SWEEP_CLOCK(node, i) (((node)->bp())[i].clock_count = 0)
+#define BP_SHOULD_EVICT(node, i) (((node)->bp())[i].clock_count == 0)
 // not crazy about having these two here, one is for the case where we create
 // new
 // nodes, such as in splits and creating new roots, and the other is for when
 // we are deserializing a node and not all bp's are touched
-#define BP_INIT_TOUCHED_CLOCK(node, i) ((node)->bp[i].clock_count = 1)
-#define BP_INIT_UNTOUCHED_CLOCK(node, i) ((node)->bp[i].clock_count = 0)
+#define BP_INIT_TOUCHED_CLOCK(node, i) (((node)->bp())[i].clock_count = 1)
+#define BP_INIT_UNTOUCHED_CLOCK(node, i) (((node)->bp())[i].clock_count = 0)
 
 // ftnode leaf basementnode macros,
 #define BLB_MAX_MSN_APPLIED(node, i) (BLB(node, i)->max_msn_applied)

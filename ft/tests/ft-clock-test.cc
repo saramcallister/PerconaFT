@@ -87,21 +87,21 @@ static void test1(int fd, FT ft_h, FTNODE *dn) {
     FTNODE_DISK_DATA ndd = NULL;
     r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, dn, &ndd, &bfe_all);
-    bool is_leaf = ((*dn)->height == 0);
+    bool is_leaf = ((*dn)->height() == 0);
     invariant(r == 0);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_AVAIL);
     }
     // should sweep and NOT get rid of anything
     PAIR_ATTR attr;
     memset(&attr, 0, sizeof(attr));
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_AVAIL);
     }
     // should sweep and get compress all
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         if (!is_leaf) {
             invariant(BP_STATE(*dn, i) == PT_COMPRESSED);
         } else {
@@ -113,12 +113,12 @@ static void test1(int fd, FT ft_h, FTNODE *dn) {
     invariant(req);
     toku_ftnode_pf_callback(*dn, ndd, &bfe_all, fd, &size);
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_AVAIL);
     }
     // should sweep and get compress all
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         if (!is_leaf) {
             invariant(BP_STATE(*dn, i) == PT_COMPRESSED);
         } else {
@@ -130,15 +130,15 @@ static void test1(int fd, FT ft_h, FTNODE *dn) {
     invariant(req);
     toku_ftnode_pf_callback(*dn, ndd, &bfe_all, fd, &size);
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_AVAIL);
     }
-    (*dn)->dirty = 1;
+    (*dn)->dirty() = 1;
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
     toku_ftnode_pe_callback(*dn, attr, ft_h, def_pe_finalize_impl, nullptr);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_AVAIL);
     }
     toku_free(ndd);
@@ -173,7 +173,7 @@ static void test2(int fd, FT ft_h, FTNODE *dn) {
     int r = toku_deserialize_ftnode_from(
         fd, make_blocknum(20), 0 /*pass zero for hash*/, dn, &ndd, &bfe_subset);
     invariant(r == 0);
-    bool is_leaf = ((*dn)->height == 0);
+    bool is_leaf = ((*dn)->height() == 0);
     // at this point, although both partitions are available, only the
     // second basement node should have had its clock
     // touched
@@ -219,8 +219,8 @@ static void test3_leaf(int fd, FT ft_h, FTNODE *dn) {
     //
     // make sure we have a leaf
     //
-    invariant((*dn)->height == 0);
-    for (int i = 0; i < (*dn)->n_children; i++) {
+    invariant((*dn)->height() == 0);
+    for (int i = 0; i < (*dn)->n_children(); i++) {
         invariant(BP_STATE(*dn, i) == PT_ON_DISK);
     }
     toku_ftnode_free(dn);
@@ -239,18 +239,18 @@ static void test_serialize_nonleaf(void) {
     int r;
 
     //    source_ft.fd=fd;
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 1;
-    sn.n_children = 2;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(2, sn.bp);
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 1;
+    sn.n_children() = 2;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(2, sn.bp());
     DBT pivotkey;
-    sn.pivotkeys.create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
+    sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
     BP_BLOCKNUM(&sn, 0).b = 30;
     BP_BLOCKNUM(&sn, 1).b = 35;
     BP_STATE(&sn, 0) = PT_AVAIL;
@@ -377,18 +377,18 @@ static void test_serialize_leaf(void) {
 
     int r;
 
-    sn.max_msn_applied_to_node_on_disk.msn = 0;
-    sn.flags = 0x11223344;
-    sn.blocknum.b = 20;
-    sn.layout_version = FT_LAYOUT_VERSION;
-    sn.layout_version_original = FT_LAYOUT_VERSION;
-    sn.height = 0;
-    sn.n_children = 2;
-    sn.dirty = 1;
-    sn.oldest_referenced_xid_known = TXNID_NONE;
-    MALLOC_N(sn.n_children, sn.bp);
+    sn.max_msn_applied_to_node_on_disk().msn = 0;
+    sn.flags() = 0x11223344;
+    sn.blocknum().b = 20;
+    sn.layout_version() = FT_LAYOUT_VERSION;
+    sn.layout_version_original() = FT_LAYOUT_VERSION;
+    sn.height() = 0;
+    sn.n_children() = 2;
+    sn.dirty() = 1;
+    sn.oldest_referenced_xid_known() = TXNID_NONE;
+    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkey;
-    sn.pivotkeys.create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
+    sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
     BP_STATE(&sn, 0) = PT_AVAIL;
     BP_STATE(&sn, 1) = PT_AVAIL;
     set_BLB(&sn, 0, toku_create_empty_bn());

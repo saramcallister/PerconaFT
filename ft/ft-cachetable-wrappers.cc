@@ -71,8 +71,8 @@ cachetable_put_empty_node_with_dep_nodes(
     PAIR dependent_pairs[num_dependent_nodes];
     enum cachetable_dirty dependent_dirty_bits[num_dependent_nodes];
     for (uint32_t i = 0; i < num_dependent_nodes; i++) {
-        dependent_pairs[i] = dependent_nodes[i]->ct_pair;
-        dependent_dirty_bits[i] = (enum cachetable_dirty) dependent_nodes[i]->dirty;
+        dependent_pairs[i] = dependent_nodes[i]->ct_pair();
+        dependent_dirty_bits[i] = (enum cachetable_dirty) dependent_nodes[i]->dirty();
     }
 
     toku_cachetable_put_with_dep_pairs(
@@ -124,7 +124,7 @@ create_new_ftnode_with_dep_nodes(
         ft->h->layout_version,
         ft->h->flags);
 
-    (*result)->fullhash = fullhash;
+    (*result)->fullhash() = fullhash;
 }
 
 void
@@ -278,8 +278,8 @@ toku_pin_ftnode_with_dep_nodes(
     PAIR dependent_pairs[num_dependent_nodes];
     enum cachetable_dirty dependent_dirty_bits[num_dependent_nodes];
     for (uint32_t i = 0; i < num_dependent_nodes; i++) {
-        dependent_pairs[i] = dependent_nodes[i]->ct_pair;
-        dependent_dirty_bits[i] = (enum cachetable_dirty) dependent_nodes[i]->dirty;
+        dependent_pairs[i] = dependent_nodes[i]->ct_pair();
+        dependent_dirty_bits[i] = (enum cachetable_dirty) dependent_nodes[i]->dirty();
     }
 
     int r = toku_cachetable_get_and_pin_with_dep_pairs(
@@ -322,7 +322,7 @@ int toku_maybe_pin_ftnode_clean(FT ft, BLOCKNUM blocknum, uint32_t fullhash, pai
         goto cleanup;
     }
     CAST_FROM_VOIDP(*nodep, node_v);
-    if ((*nodep)->height > 0 && lock_type != PL_READ) {
+    if ((*nodep)->height() > 0 && lock_type != PL_READ) {
         toku_move_ftnode_messages_to_stale(ft, *nodep);
     }
 cleanup:
@@ -353,20 +353,20 @@ void toku_ftnode_swap_pair_values(FTNODE a, FTNODE b)
 // Effect: Swap the blocknum, fullhash, and PAIR for for a and b
 // Requires: Both nodes are pinned
 {
-    BLOCKNUM tmp_blocknum = a->blocknum;
-    uint32_t tmp_fullhash = a->fullhash;
-    PAIR tmp_pair = a->ct_pair;
+    BLOCKNUM tmp_blocknum = a->blocknum();
+    uint32_t tmp_fullhash = a->fullhash();
+    PAIR tmp_pair = a->ct_pair();
 
-    a->blocknum = b->blocknum;
-    a->fullhash = b->fullhash;
-    a->ct_pair = b->ct_pair;
+    a->blocknum() = b->blocknum();
+    a->fullhash() = b->fullhash();
+    a->ct_pair() = b->ct_pair();
 
-    b->blocknum = tmp_blocknum;
-    b->fullhash = tmp_fullhash;
-    b->ct_pair = tmp_pair;
+    b->blocknum() = tmp_blocknum;
+    b->fullhash() = tmp_fullhash;
+    b->ct_pair() = tmp_pair;
 
     // A and B swapped pair pointers, but we still have to swap
     // the actual pair values (ie: the FTNODEs they represent)
     // in the cachetable.
-    toku_cachetable_swap_pair_values(a->ct_pair, b->ct_pair);
+    toku_cachetable_swap_pair_values(a->ct_pair(), b->ct_pair());
 }
