@@ -96,17 +96,17 @@ public:
     
         // just copy this code from a previous test
         // don't care what it does, just want to get a node up and running
-        sn.flags = 0x11223344;
-        sn.blocknum.b = 20;
-        sn.layout_version = FT_LAYOUT_VERSION;
-        sn.layout_version_original = FT_LAYOUT_VERSION;
-        sn.height = 0;
-        sn.n_children = 2;
-        sn.dirty = 1;
-        sn.oldest_referenced_xid_known = TXNID_NONE;
-        MALLOC_N(sn.n_children, sn.bp);
+        sn.flags() = 0x11223344;
+        sn.blocknum().b = 20;
+        sn.layout_version() = FT_LAYOUT_VERSION;
+        sn.layout_version_original() = FT_LAYOUT_VERSION;
+        sn.height() = 0;
+        sn.n_children() = 2;
+        sn.dirty() = 1;
+        sn.oldest_referenced_xid_known() = TXNID_NONE;
+        MALLOC_N(sn.n_children(), sn.bp());
         DBT pivotkey;
-        sn.pivotkeys.create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
+        sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
         BP_STATE(&sn,0) = PT_AVAIL;
         BP_STATE(&sn,1) = PT_AVAIL;
         set_BLB(&sn, 0, toku_create_empty_bn());

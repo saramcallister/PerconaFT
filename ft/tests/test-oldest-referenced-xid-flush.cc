@@ -62,8 +62,8 @@ static bool dont_recursively_flush(FTNODE UU(child), void* UU(extra)) {
 }
 
 static int child_to_flush(FT UU(h), FTNODE parent, void* UU(extra)) {
-    assert(parent->height == 2);
-    assert(parent->n_children == 1);
+    assert(parent->height() == 2);
+    assert(parent->n_children() == 1);
     return 0;
 }
 

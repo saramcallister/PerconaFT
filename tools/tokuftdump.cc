@@ -216,7 +216,7 @@ static int getHeight(int fd, BLOCKNUM blocknum, FT ft){
     int r = toku_deserialize_ftnode_from (fd, blocknum, 0 /*pass zero for hash, it doesn't matter*/, &n, &ndd, &bfe);
     assert_zero(r);
     assert(n!=0);
-    return n->height;
+    return n->height();
 }
 
 static FTNODE  getNode(int fd, BLOCKNUM blocknum, FT ft) {
@@ -354,10 +354,10 @@ static void  countMessagesInFT(int fd, BLOCKNUM blocknum, FT ft,NMC *msgs[]){
     FTNODE n=getNode(fd,blocknum,ft);
 
     NMC *last=NULL;
-    if(msgs[n->height]==NULL){
-        last = msgs[n->height]=new NMC;
+    if(msgs[n->height()]==NULL){
+        last = msgs[n->height()]=new NMC;
     }else {
-        last=getLast(msgs[n->height]);
+        last=getLast(msgs[n->height()]);
         last->nextNode=new NMC;
         last=last->nextNode;
     }
@@ -369,14 +369,14 @@ static void  countMessagesInFT(int fd, BLOCKNUM blocknum, FT ft,NMC *msgs[]){
     last->clean=0;
     last->nextNode=NULL;
 
-    if (n->height==0){
+    if (n->height()==0){
         toku_ftnode_free(&n);
         return;
     }
-    for(int i=0;i<n->n_children;i++){
+    for(int i=0;i<n->n_children();i++){
         NONLEAF_CHILDINFO bnc = BNC(n, i);
-        if (n->height==1 && n->bp[i].ptr.tag==BCT_NULL){
-            cout <<n->bp[i].ptr.tag;
+        if (n->height()==1 && (n->bp())[i].ptr.tag==BCT_NULL){
+            cout <<(n->bp())[i].ptr.tag;
         }
         auto dump_fn=[&](const ft_msg &msg, bool UU(is_fresh)) {
             enum ft_msg_type type = (enum ft_msg_type) msg.type();
@@ -408,47 +408,47 @@ static void dump_node(int fd, BLOCKNUM blocknum, FT ft) {
     printf(" diskoffset  =%" PRId64 "\n", diskoffset);
     printf(" disksize    =%" PRId64 "\n", disksize);
     printf(" serialize_size =%u\n", toku_serialize_ftnode_size(n));
-    printf(" flags       =%u\n", n->flags);
-    printf(" blocknum=%" PRId64 "\n", n->blocknum.b);
+    printf(" flags       =%u\n", n->flags());
+    printf(" blocknum=%" PRId64 "\n", n->blocknum().b);
     //printf(" log_lsn     =%lld\n", n->log_lsn.lsn); // The log_lsn is a memory-only value.
-    printf(" height      =%d\n",   n->height);
-    printf(" layout_version=%d\n", n->layout_version);
-    printf(" layout_version_original=%d\n", n->layout_version_original);
-    printf(" layout_version_read_from_disk=%d\n", n->layout_version_read_from_disk);
-    printf(" build_id=%d\n", n->build_id);
-    printf(" max_msn_applied_to_node_on_disk=%" PRId64 " (0x%" PRIx64 ")\n", n->max_msn_applied_to_node_on_disk.msn, n->max_msn_applied_to_node_on_disk.msn);
+    printf(" height      =%d\n",   n->height());
+    printf(" layout_version=%d\n", n->layout_version());
+    printf(" layout_version_original=%d\n", n->layout_version_original());
+    printf(" layout_version_read_from_disk=%d\n", n->layout_version_read_from_disk());
+    printf(" build_id=%d\n", n->build_id());
+    printf(" max_msn_applied_to_node_on_disk=%" PRId64 " (0x%" PRIx64 ")\n", n->max_msn_applied_to_node_on_disk().msn, n->max_msn_applied_to_node_on_disk().msn);
     printf(" io time %lf decompress time %lf deserialize time %lf\n",
            tokutime_to_seconds(bfe.io_time),
            tokutime_to_seconds(bfe.decompress_time),
            tokutime_to_seconds(bfe.deserialize_time));
 
-    printf(" n_children=%d\n", n->n_children);
-    printf(" pivotkeys.total_size()=%u\n", (unsigned) n->pivotkeys.total_size());
+    printf(" n_children=%d\n", n->n_children());
+    printf(" pivotkeys.total_size()=%u\n", (unsigned) n->pivotkeys().total_size());
 
-    if (n->height > 0) {
+    if (n->height() > 0) {
 	printf(" pivots:\n");
     } else {
 	printf("LEAF keys:\n");
     }
 
-    for (int i=0; i<n->n_children-1; i++) {
-        const DBT piv = n->pivotkeys.get_pivot(i);
+    for (int i=0; i<n->n_children()-1; i++) {
+        const DBT piv = n->pivotkeys().get_pivot(i);
         printf("  pivot %2d:", i);
-        if (n->flags)
-            printf(" flags=%x ", n->flags);
+        if (n->flags())
+            printf(" flags=%x ", n->flags());
         print_item(piv.data, piv.size);
         printf("\n");
     }
 
-    if (n->height > 0) {
+    if (n->height() > 0) {
 	printf(" children:\n");
     } else {
 	printf("LEAF data:\n");
     }
 
-    for (int i=0; i<n->n_children; i++) {
+    for (int i=0; i<n->n_children(); i++) {
             printf("  child %d: ", i);
-        if (n->height > 0) {
+        if (n->height() > 0) {
             printf("%" PRId64 "\n", BP_BLOCKNUM(n, i).b);
             NONLEAF_CHILDINFO bnc = BNC(n, i);
             unsigned int n_bytes = toku_bnc_nbytesinbuf(bnc);
@@ -550,7 +550,7 @@ static int nodesizes_helper(BLOCKNUM b, int64_t size, int64_t UU(address), void 
     int r = toku_deserialize_ftnode_from(info->fd, b, 0 /*pass zero for hash, it doesn't matter*/, &n, &ndd, &bfe);
     if (r==0) {
         info->blocksizes += size;
-        if (n->height == 0) {
+        if (n->height() == 0) {
             info->leafsizes += size;
             info->leafblocks++;
         }
@@ -604,30 +604,30 @@ static int summary_helper(BLOCKNUM b, int64_t size, int64_t UU(address), void *e
     if (r==0) {
         info->blocksizes += size;
 
-	(info->height_cnt)[n->height]++;
+	(info->height_cnt)[n->height()]++;
 
-        if (n->height == 0) {
+        if (n->height() == 0) {
             info->leafsizes += size;
             info->leafblocks++;
         } else {
 	    info->nonleafnode_cnt++;
 	}
 
-	info->hdisk_size[n->height] += size;
+	info->hdisk_size[n->height()] += size;
 	auto serialsize = toku_serialize_ftnode_size(n);
 	info->serialsize += serialsize;
-	info->hserial_size[n->height] += serialsize;
+	info->hserial_size[n->height()] += serialsize;
 
 
-	if ((uint64_t)n->height > info->maxheight) {
-	    info->maxheight = n->height;
+	if ((uint64_t)n->height() > info->maxheight) {
+	    info->maxheight = n->height();
 	}
     
 
 
-	for (int i=0; i<n->n_children; i++) {
+	for (int i=0; i<n->n_children(); i++) {
 	    //printf("  child %d: ", i);
-	    if (n->height > 0) {
+	    if (n->height() > 0) {
 		NONLEAF_CHILDINFO bnc = BNC(n, i);
 		unsigned int n_bytes = toku_bnc_nbytesinbuf(bnc);
 		int n_entries = toku_bnc_n_entries(bnc);
@@ -636,14 +636,14 @@ static int summary_helper(BLOCKNUM b, int64_t size, int64_t UU(address), void *e
 		//}
 		info->msg_cnt += n_entries;
 		info->msg_size += n_bytes;
-		info->hmsg_cnt[n->height] += n_entries;
-		info->hmsg_size[n->height] += n_bytes;
+		info->hmsg_cnt[n->height()] += n_entries;
+		info->hmsg_size[n->height()] += n_bytes;
 	    } else {
 		info->pairs_cnt += BLB_DATA(n, i)->num_klpairs();
 	    }
 	}
-	if (n->height ==0) {
-	    info->hmsg_cnt[0] += n->n_children; // this way we count partitions per leaf node
+	if (n->height() ==0) {
+	    info->hmsg_cnt[0] += n->n_children(); // this way we count partitions per leaf node
 	}
 
 

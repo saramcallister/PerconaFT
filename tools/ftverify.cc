@@ -254,7 +254,7 @@ check_block(BLOCKNUM blocknum, int64_t UU(blocksize), int64_t UU(address), void 
         failure++;
     }
 
-    int version = node->layout_version_read_from_disk;
+    int version = node->layout_version_read_from_disk();
 
       ////////////////////////////
      // UPGRADE FORK GOES HERE //
@@ -310,7 +310,7 @@ check_block(BLOCKNUM blocknum, int64_t UU(blocksize), int64_t UU(address), void 
     // <CER> TODO: Create function for this.
     // Using the node info, decompress all the keys and pivots to
     // detect any corruptions.
-    for (int i = 0; i < node->n_children; ++i) {
+    for (int i = 0; i < node->n_children(); ++i) {
         uint32_t curr_offset = BP_START(ndd,i);
         uint32_t curr_size   = BP_SIZE(ndd,i);
         struct rbuf curr_rbuf = {.buf = NULL, .size = 0, .ndone = 0};

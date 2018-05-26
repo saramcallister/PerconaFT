@@ -149,15 +149,15 @@ test_split_on_boundary(void)
     setup_ftnode_header(&sn);
     const int nelts = 2 * nodesize / eltsize;
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize, dummy_msn_3884, bnsize);
-    for (int bn = 0; bn < sn.n_children; ++bn) {
+    for (int bn = 0; bn < sn.n_children(); ++bn) {
         long k;
         for (int i = 0; i < eltsperbn; ++i) {
             k = bn * eltsperbn + i;
             insert_dummy_value(&sn, bn, k, i);
         }
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         }
     }
 
@@ -206,15 +206,15 @@ test_split_with_everything_on_the_left(void)
     const int nelts = 2 * nodesize / eltsize;
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize + 1, dummy_msn_3884, 2 * nodesize);
     size_t big_val_size = 0;
-    for (int bn = 0; bn < sn.n_children; ++bn) {
+    for (int bn = 0; bn < sn.n_children(); ++bn) {
         long k;
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             for (int i = 0; i < eltsperbn; ++i) {
                 k = bn * eltsperbn + i;
                 big_val_size += insert_dummy_value(&sn, bn, k, i);
             }
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         } else {
             k = bn * eltsperbn;
             // we want this to be as big as the rest of our data and a
@@ -272,15 +272,15 @@ test_split_on_boundary_of_last_node(void)
     const size_t maxbnsize = 2 * nodesize;
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize + 1, dummy_msn_3884, maxbnsize);
     size_t big_val_size = 0;
-    for (int bn = 0; bn < sn.n_children; ++bn) {
+    for (int bn = 0; bn < sn.n_children(); ++bn) {
         long k;
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             for (int i = 0; i < eltsperbn; ++i) {
                 k = bn * eltsperbn + i;
                 big_val_size += insert_dummy_value(&sn, bn, k, i);
             }
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         } else {
             k = bn * eltsperbn;
             // we want this to be slightly smaller than all the rest of
@@ -330,7 +330,7 @@ test_split_at_begin(void)
     const size_t maxbnsize = 2 * nodesize;
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize, dummy_msn_3884, maxbnsize);
     size_t totalbytes = 0;
-    for (int bn = 0; bn < sn.n_children; ++bn) {
+    for (int bn = 0; bn < sn.n_children(); ++bn) {
         long k;
         for (int i = 0; i < eltsperbn; ++i) {
             k = bn * eltsperbn + i;
@@ -341,9 +341,9 @@ test_split_at_begin(void)
             }
             totalbytes += insert_dummy_value(&sn, bn, k, i-1);
         }
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         }
     }
     {  // now add the first element
@@ -392,11 +392,11 @@ test_split_at_end(void)
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize, dummy_msn_3884, maxbnsize);
     long totalbytes = 0;
     int bn, i;
-    for (bn = 0; bn < sn.n_children; ++bn) {
+    for (bn = 0; bn < sn.n_children(); ++bn) {
         long k;
         for (i = 0; i < eltsperbn; ++i) {
             k = bn * eltsperbn + i;
-            if (bn == sn.n_children - 1 && i == eltsperbn - 1) {
+            if (bn == sn.n_children() - 1 && i == eltsperbn - 1) {
                 // add a few bytes so the halfway mark is definitely inside this
                 // val, which will make it go to the left and everything else to
                 // the right, which is nothing, so we actually split at the very end
@@ -409,9 +409,9 @@ test_split_at_end(void)
                 totalbytes += insert_dummy_value(&sn, bn, k, i);
             }
         }
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         }
     }
 
@@ -454,15 +454,15 @@ test_split_odd_nodes(void)
     // This will give us 9 children.
     const int nelts = 2 * (nodesize + 128) / eltsize;
     setup_ftnode_partitions(&sn, nelts * eltsize / bnsize, dummy_msn_3884, bnsize);
-    for (int bn = 0; bn < sn.n_children; ++bn) {
+    for (int bn = 0; bn < sn.n_children(); ++bn) {
         long k;
         for (int i = 0; i < eltsperbn; ++i) {
             k = bn * eltsperbn + i;
             insert_dummy_value(&sn, bn, k, i);
         }
-        if (bn < sn.n_children - 1) {
+        if (bn < sn.n_children() - 1) {
             DBT pivotkey;
-            sn.pivotkeys.insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
+            sn.pivotkeys().insert_at(toku_fill_dbt(&pivotkey, &k, sizeof(k)), bn);
         }
     }
 

@@ -60,13 +60,13 @@ int num_flushes_called;
 
 static int child_to_flush(FT UU(h), FTNODE parent, void* UU(extra)) {
     // internal node has 2 children
-    if (parent->height == 1) {
-        assert(parent->n_children == 2);
+    if (parent->height() == 1) {
+        assert(parent->n_children() == 2);
         return curr_child_to_flush;
     }
     // root has 1 child
-    else if (parent->height == 2) {
-        assert(parent->n_children == 1);
+    else if (parent->height() == 2) {
+        assert(parent->n_children() == 1);
         return 0;
     }
     else {
