@@ -3028,6 +3028,7 @@ static void finish_leafnode(
     int result = 0;
 
     // serialize leaf to buffer
+    size_t hs;
     size_t serialized_leaf_size = 0;
     size_t uncompressed_serialized_leaf_size = 0;
     char *serialized_leaf = NULL;
@@ -3039,6 +3040,7 @@ static void finish_leafnode(
         target_compression_method,
         true,
         true,
+        &hs,
         &serialized_leaf_size,
         &uncompressed_serialized_leaf_size,
         &serialized_leaf);
@@ -3257,9 +3259,10 @@ static void write_nonleaf_node (FTLOADER bl, struct dbout *out, int64_t blocknum
     if (result == 0) {
         size_t n_bytes;
         size_t n_uncompressed_bytes;
-        char *bytes;
+        size_t n_header_bytes;
+	char *bytes;
         int r;
-        r = toku_serialize_ftnode_to_memory(node, &ndd, target_basementnodesize, target_compression_method, true, true, &n_bytes, &n_uncompressed_bytes, &bytes);
+        r = toku_serialize_ftnode_to_memory(node, &ndd, target_basementnodesize, target_compression_method, true, true, &n_header_bytes, &n_bytes, &n_uncompressed_bytes, &bytes);
         if (r) {
             result = r;
         } else {
