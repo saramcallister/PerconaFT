@@ -516,7 +516,7 @@ void block_table::_ensure_safe_write_unlocked(int fd,
 void block_table::realloc_on_disk(BLOCKNUM b,
                                   DISKOFF size,
                                   DISKOFF *offset,
-				  DISKOFF header_size,
+				  size_t header_size,
                                   FT ft,
                                   int fd,
                                   bool for_checkpoint) {

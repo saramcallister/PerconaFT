@@ -629,6 +629,7 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
                                     enum toku_compression_method compression_method,
                                     bool do_rebalancing,
                                     bool in_parallel, // for loader is true, for toku_ftnode_flush_callback, is false
+                            /*out*/ size_t *n_bytes_header,
                             /*out*/ size_t *n_bytes_to_write,
                             /*out*/ size_t *n_uncompressed_bytes,
                             /*out*/ char  **bytes_to_write)
@@ -720,6 +721,7 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
     uint32_t total_node_size = (serialize_node_header_size(node) // uncompressed header
                                  + sb_node_info.compressed_size   // compressed nodeinfo (without its checksum)
                                  + 4);                            // nodeinfo's checksum
+    *n_bytes_header = total_node_size; 
     uint32_t total_uncompressed_size = (serialize_node_header_size(node) // uncompressed header
                                  + sb_node_info.uncompressed_size   // uncompressed nodeinfo (without its checksum)
                                  + 4);                            // nodeinfo's checksum
@@ -770,19 +772,16 @@ int toku_serialize_ftnode_to_memory(FTNODE node,
     invariant(reinterpret_cast<unsigned long long>(*bytes_to_write) % 512 == 0);
     return 0;
 }
-
-static long
+#if 0
+long
 ftnode_header_size (FTNODE node)
 // Effect: Estimate how much main memory a node requires.
 {
-    long retval = 0;
-    int n_children = node->n_children;
-    retval += sizeof(*node);
-    retval += (n_children)*(sizeof(node->bp[0]));
-    retval += node->pivotkeys.total_size();
-    return retval;
+    int result = 0;
+    result += serialize_node_header_size(node);
+    return result;
 }
-
+#endif
 int toku_serialize_ftnode_to(int fd,
                              BLOCKNUM blocknum,
                              FTNODE node,
@@ -792,6 +791,7 @@ int toku_serialize_ftnode_to(int fd,
                              bool for_checkpoint) {
     size_t n_to_write;
     size_t n_uncompressed_bytes;
+    size_t n_bytes_header;
     char *compressed_buf = nullptr;
 
     // because toku_serialize_ftnode_to is only called for
@@ -814,6 +814,7 @@ int toku_serialize_ftnode_to(int fd,
         ft->h->compression_method,
         do_rebalancing,
         toku_unsafe_fetch(&toku_serialize_in_parallel),
+ 	&n_bytes_header,
         &n_to_write,
         &n_uncompressed_bytes,
         &compressed_buf);
@@ -825,10 +826,10 @@ int toku_serialize_ftnode_to(int fd,
     // including the zeros
     invariant(blocknum.b >= 0);
     DISKOFF offset;
-    DISKOFF header_size = ftnode_header_size(node);
+//    DISKOFF header_size = ftnode_header_size(node);
     // Dirties the ft
     ft->blocktable.realloc_on_disk(
-        blocknum, n_to_write, &offset, header_size, ft, fd, for_checkpoint);
+        blocknum, n_to_write, &offset, n_bytes_header, ft, fd, for_checkpoint);
 
     tokutime_t t0 = toku_time_now();
     toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
@@ -2925,7 +2926,7 @@ int toku_serialize_rollback_log_to(int fd,
     // Dirties the ft
     DISKOFF offset;
     ft->blocktable.realloc_on_disk(
-        blocknum, n_to_write, &offset, (DISKOFF)-3, ft, fd, for_checkpoint);
+        blocknum, n_to_write, &offset, -3, ft, fd, for_checkpoint);
 
     toku_os_full_pwrite(fd, compressed_buf, n_to_write, offset);
     toku_free(compressed_buf);

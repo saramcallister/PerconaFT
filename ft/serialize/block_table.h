@@ -125,7 +125,7 @@ class block_table {
     void realloc_on_disk(BLOCKNUM b,
                          DISKOFF size,
                          DISKOFF *offset,
-			 DISKOFF header_size,
+			 size_t header_size,
                          struct ft *ft,
                          int fd,
                          bool for_checkpoint);

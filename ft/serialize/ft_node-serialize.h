@@ -44,7 +44,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/serialize/rbuf.h"
 #include "ft/serialize/wbuf.h"
 #include "ft/serialize/block_table.h"
-
+//long ftnode_header_size (FTNODE node);
 unsigned int toku_serialize_ftnode_size(FTNODE node);
 int toku_serialize_ftnode_to_memory(
     FTNODE node,
@@ -53,6 +53,7 @@ int toku_serialize_ftnode_to_memory(
     enum toku_compression_method compression_method,
     bool do_rebalancing,
     bool in_parallel,
+    size_t *n_bytes_header,
     size_t *n_bytes_to_write,
     size_t *n_uncompressed_bytes,
     char **bytes_to_write);
