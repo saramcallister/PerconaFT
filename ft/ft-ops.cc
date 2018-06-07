@@ -3559,15 +3559,20 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
                  ANCESTORS ancestors, const pivot_bounds &bounds, bool can_bulk_fetch)
 // Effect: Search in a node's child.  Searches are read-only now (at least as far as the hardcopy is concerned).
 {
-    struct ancestors next_ancestors = {node, childnum, ancestors};
-
+    struct ancestors next_ancestors;
+    if(bf_lookup(node, childnum, search->k)) {
+        next_ancestors = {node, childnum, ancestors};
+    } else {
+        next_ancestors = {node, -1, ancestors}; 
+    }
     BLOCKNUM childblocknum = BP_BLOCKNUM(node,childnum);
     uint32_t fullhash = compute_child_fullhash(ft_handle->ft->cf, node, childnum);
     FTNODE childnode = nullptr;
 
     // If the current node's height is greater than 1, then its child is an internal node.
     // Therefore, to warm the cache better (#5798), we want to read all the partitions off disk in one shot.
-    bool read_all_partitions = node->height() > 1;
+    //bool read_all_partitions = node->height() > 1;
+    bool read_all_partitions = false;
     ftnode_fetch_extra bfe;
     bfe.create_for_subset_read(
         ft_handle->ft,
@@ -3872,7 +3877,8 @@ try_again:
         ftcursor->left_is_neg_infty,
         ftcursor->right_is_pos_infty,
         ftcursor->disable_prefetching,
-        true // We may as well always read the whole root into memory, if it's a leaf node it's a tiny tree anyway.
+    	false
+    //    true // We may as well always read the whole root into memory, if it's a leaf node it's a tiny tree anyway.
         );
     FTNODE node = NULL;
     {

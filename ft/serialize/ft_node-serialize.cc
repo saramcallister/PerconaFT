@@ -1316,6 +1316,8 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
             node,
             bfe->search
             );
+        if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
+          bfe->type = ftnode_fetch_none;
     } else if (bfe->type == ftnode_fetch_keymatch) {
         // we do not take into account prefetching yet
         // as of now, if we need a subset, the only thing
@@ -1702,6 +1704,7 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
     }
 
     XMALLOC_N(node->n_children(), node->bp());
+    XMALLOC_N(node->n_children(), node->children_blocknum());
     XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
     for (int i=0; i<node->n_children(); i++) {
@@ -1868,6 +1871,7 @@ cleanup:
         if (node) {
             toku_free(*ndd);
             toku_free(node->bp());
+            toku_free(node->children_blocknum());
             toku_free(node);
         }
     }
@@ -2364,6 +2368,7 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
     node->build_id() = rbuf_int(rb);
     node->n_children() = rbuf_int(rb);
     XMALLOC_N(node->n_children(), node->bp());
+    XMALLOC_N(node->n_children(), node->children_blocknum());
     XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
     for (int i=0; i<node->n_children(); i++) {

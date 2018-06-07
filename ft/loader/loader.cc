@@ -2174,7 +2174,7 @@ struct leaf_buf {
 };
 
 struct translation {
-    int64_t off, size;
+    int64_t off, size, header_size;
 };
 
 struct dbout {
@@ -2665,7 +2665,7 @@ static int toku_loader_write_ft_from_q (FTLOADER bl,
             result = r; goto error;
         }
 
-        r = write_header(&out, off_of_translation, (out.n_translations+1)*16+4);
+        r = write_header(&out, off_of_translation, (out.n_translations+1)*24+4);
         if (r) {
             result = r; goto error;
         }
@@ -3080,14 +3080,16 @@ static int write_translation_table (struct dbout *out, long long *off_of_transla
     struct dbuf ttable;
     dbuf_init(&ttable);
     long long off_of_translation = out->current_off;
-    long long bt_size_on_disk = out->n_translations * 16 + 20;
+    long long bt_size_on_disk = out->n_translations * 24 + 20;
     putbuf_int64(&ttable, out->n_translations);    // number of records
     putbuf_int64(&ttable, -1LL); // the linked list
     out->translation[1].off = off_of_translation;
     out->translation[1].size = bt_size_on_disk;
+    out->translation[1].header_size = -3;
     for (int i=0; i<out->n_translations; i++) {
         putbuf_int64(&ttable, out->translation[i].off);
         putbuf_int64(&ttable, out->translation[i].size);
+        putbuf_int64(&ttable, out->translation[i].header_size);
     }
     unsigned int checksum = toku_x1764_memory(ttable.buf, ttable.off);
     putbuf_int32(&ttable, checksum);
@@ -3289,6 +3291,7 @@ static void write_nonleaf_node (FTLOADER bl, struct dbout *out, int64_t blocknum
     }
     toku_free(pivots);
     // TODO: Should be using toku_destroy_ftnode_internals, which should be renamed to toku_ftnode_destroy
+    toku_free(node->children_blocknum());
     toku_free(node->bp());
     node->pivotkeys().destroy();
     toku_free(node);

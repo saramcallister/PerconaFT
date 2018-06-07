@@ -124,6 +124,7 @@ void
 allocate_and_read_partition_offsets(FTNODE node, struct rbuf *rb, FTNODE_DISK_DATA *ndd)
 {
     XMALLOC_N(node->n_children(), node->bp());
+    XMALLOC_N(node->n_children(), node->children_blocknum());
     // TODO: Fix this to use xmalloc_n
     XMALLOC_N(node->n_children(), *ndd);
     // Read the partition locations.

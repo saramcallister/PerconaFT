@@ -63,6 +63,7 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
     n->oldest_referenced_xid_known() = TXNID_NONE;
 
     if (num_children > 0) {
+        XMALLOC_N(num_children, n->children_blocknum());
         XMALLOC_N(num_children, n->bp());
         for (int i = 0; i < num_children; i++) {
             BP_BLOCKNUM(n,i).b=0;
@@ -105,6 +106,7 @@ void toku_destroy_ftnode_internals(FTNODE node) {
         }
         set_BNULL(node, i);
     }
+    toku_free(node->children_blocknum());
     toku_free(node->bp());
     node->bp() = NULL;
 }
@@ -542,20 +544,18 @@ apply_ancestors_messages_to_bn(
     BASEMENTNODE curr_bn = BLB(node, childnum);
     const pivot_bounds curr_bounds = bounds.next_bounds(node, childnum);
     for (ANCESTORS curr_ancestors = ancestors; curr_ancestors; curr_ancestors = curr_ancestors->next) {
-        if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > curr_bn->max_msn_applied.msn) {
-            paranoid_invariant(BP_STATE(curr_ancestors->node, curr_ancestors->childnum) == PT_AVAIL);
-            bnc_apply_messages_to_basement_node(
-                t,
-                curr_bn,
-                curr_ancestors->node,
-                curr_ancestors->childnum,
-                curr_bounds,
-                gc_info,
-                msgs_applied
-                );
-            // We don't want to check this ancestor node again if the
-            // next time we query it, the msn hasn't changed.
-            curr_bn->max_msn_applied = curr_ancestors->node->max_msn_applied_to_node_on_disk();
+      if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn >
+              curr_bn->max_msn_applied.msn &&
+          curr_ancestors->childnum != -1) {
+        paranoid_invariant(BP_STATE(curr_ancestors->node,
+                                    curr_ancestors->childnum) == PT_AVAIL);
+        bnc_apply_messages_to_basement_node(t, curr_bn, curr_ancestors->node,
+                                            curr_ancestors->childnum,
+                                            curr_bounds, gc_info, msgs_applied);
+        // We don't want to check this ancestor node again if the
+        // next time we query it, the msn hasn't changed.
+        curr_bn->max_msn_applied =
+            curr_ancestors->node->max_msn_applied_to_node_on_disk();
         }
     }
     // At this point, we know all the stale messages above this
