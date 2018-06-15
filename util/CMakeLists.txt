@@ -11,6 +11,10 @@ set(util_srcs
   threadpool
   scoped_malloc
   x1764
+  gqf
+  gqf_file
+  hashutil
+  zipf
   )
 
 add_library(util SHARED ${util_srcs})
