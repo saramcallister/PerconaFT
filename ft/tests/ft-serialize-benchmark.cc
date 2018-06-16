@@ -298,7 +298,8 @@ static void test_serialize_nonleaf(int valsize,
             }
             memset(&buf[c], 0, valsize - c);
 
-            toku_bnc_insert_msg(bnc,
+            toku_bnc_insert_msg(&sn,
+				bnc,
                                 &k,
                                 sizeof k,
                                 buf,

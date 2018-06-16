@@ -3560,11 +3560,11 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
 // Effect: Search in a node's child.  Searches are read-only now (at least as far as the hardcopy is concerned).
 {
     struct ancestors next_ancestors;
-    if(bf_lookup(node, childnum, search->k)) {
+    //if(bf_lookup(node, childnum, search->k)) {
         next_ancestors = {node, childnum, ancestors};
-    } else {
-        next_ancestors = {node, -1, ancestors}; 
-    }
+    //} else {
+      //  next_ancestors = {node, -1, ancestors}; 
+    //}
     BLOCKNUM childblocknum = BP_BLOCKNUM(node,childnum);
     uint32_t fullhash = compute_child_fullhash(ft_handle->ft->cf, node, childnum);
     FTNODE childnode = nullptr;

@@ -80,7 +80,7 @@ rand_bytes_limited(void *dest, int size)
 // generate a random message with xids and a key starting with pfx, insert
 // it in bnc, and save it in output params save and is_fresh_out
 static void
-insert_random_message(NONLEAF_CHILDINFO bnc, ft_msg **save, bool *is_fresh_out, XIDS xids, int pfx)
+insert_random_message(FTNODE node, NONLEAF_CHILDINFO bnc, ft_msg **save, bool *is_fresh_out, XIDS xids, int pfx)
 {
     int keylen = (random() % 128) + 16;
     int vallen = (random() % 128) + 16;
@@ -98,7 +98,7 @@ insert_random_message(NONLEAF_CHILDINFO bnc, ft_msg **save, bool *is_fresh_out, 
     *save = new ft_msg(&keydbt, &valdbt, FT_INSERT, msn, xids);
     *is_fresh_out = is_fresh;
 
-    toku_bnc_insert_msg(bnc, key, keylen + (sizeof pfx), val, vallen,
+    toku_bnc_insert_msg(node, bnc, key, keylen + (sizeof pfx), val, vallen,
                         FT_INSERT, msn, xids, is_fresh,
                         dummy_cmp);
 }
@@ -254,7 +254,7 @@ orthopush_flush_update_fun(DB * UU(db), const DBT *UU(key), const DBT *UU(old_va
 // the update message will overwrite the value with something generated
 // here, and add one to the int pointed to by applied
 static void
-insert_random_update_message(NONLEAF_CHILDINFO bnc, ft_msg **save, bool is_fresh, XIDS xids, int pfx, int *applied, MSN *max_msn)
+insert_random_update_message(FTNODE node, NONLEAF_CHILDINFO bnc, ft_msg **save, bool is_fresh, XIDS xids, int pfx, int *applied, MSN *max_msn)
 {
     int keylen = (random() % 16) + 16;
     int vallen = (random() % 16) + 16;
@@ -272,7 +272,7 @@ insert_random_update_message(NONLEAF_CHILDINFO bnc, ft_msg **save, bool is_fresh
     toku_fill_dbt(&valdbt, update_extra, sizeof *update_extra);
     *save = new ft_msg(&keydbt, &valdbt, FT_UPDATE, msn, xids);
 
-    toku_bnc_insert_msg(bnc, key, keylen + (sizeof pfx),
+    toku_bnc_insert_msg(node, bnc, key, keylen + (sizeof pfx),
                         update_extra, sizeof *update_extra,
                         FT_UPDATE, msn, xids, is_fresh,
                         dummy_cmp);
@@ -302,24 +302,31 @@ flush_to_internal(FT_HANDLE t) {
     CKERR(r);
 
     NONLEAF_CHILDINFO child_bnc = toku_create_empty_nl();
-    int i;
-    for (i = 0; toku_bnc_memory_used(child_bnc) < 128*1024; ++i) {
-        insert_random_message(child_bnc, &child_messages[i], &child_messages_is_fresh[i], xids_123, 0);
-    }
-    int num_child_messages = i;
-
-    NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
-    for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_message(parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
-    }
-    int num_parent_messages = i;
-
     FTNODE XMALLOC(child);
     BLOCKNUM blocknum = { 42 };
     toku_initialize_empty_ftnode(child, blocknum, 1, 1, FT_LAYOUT_VERSION, 0);
     destroy_nonleaf_childinfo(BNC(child, 0));
     set_BNC(child, 0, child_bnc);
     BP_STATE(child, 0) = PT_AVAIL;
+
+    int i;
+    for (i = 0; toku_bnc_memory_used(child_bnc) < 128*1024; ++i) {
+        insert_random_message(child, child_bnc, &child_messages[i], &child_messages_is_fresh[i], xids_123, 0);
+    }
+    int num_child_messages = i;
+
+    NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    FTNODE XMALLOC(parent);
+    BLOCKNUM pblocknum = { 41 };
+    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
+    destroy_nonleaf_childinfo(BNC(parent, 0));
+    set_BNC(parent, 0, parent_bnc);
+    BP_STATE(parent, 0) = PT_AVAIL;
+
+    for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
+        insert_random_message(parent, parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
+    }
+    int num_parent_messages = i;
 
     toku_bnc_flush_to_child(t->ft, parent_bnc, child, TXNID_NONE);
 
@@ -404,7 +411,7 @@ flush_to_internal(FT_HANDLE t) {
         toku_free(child_messages[i]->vdbt()->data);
         delete child_messages[i];
     }
-    destroy_nonleaf_childinfo(parent_bnc);
+    toku_ftnode_free(&parent);
     toku_ftnode_free(&child);
     toku_free(parent_messages);
     toku_free(child_messages);
@@ -440,24 +447,6 @@ flush_to_internal_multiple(FT_HANDLE t) {
             childkeys[i] = NULL;
         }
     }
-    int total_size = 0;
-    for (i = 0; total_size < 128*1024; ++i) {
-        total_size -= toku_bnc_memory_used(child_bncs[i%8]);
-        insert_random_message(child_bncs[i%8], &child_messages[i], &child_messages_is_fresh[i], xids_123, i%8);
-        total_size += toku_bnc_memory_used(child_bncs[i%8]);
-        if (i % 8 < 7) {
-            if (childkeys[i%8] == NULL || dummy_cmp(child_messages[i]->kdbt(), childkeys[i%8]->kdbt()) > 0) {
-                childkeys[i%8] = child_messages[i];
-            }
-        }
-    }
-    int num_child_messages = i;
-
-    NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
-    for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_message(parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
-    }
-    int num_parent_messages = i;
 
     FTNODE XMALLOC(child);
     BLOCKNUM blocknum = { 42 };
@@ -471,6 +460,32 @@ flush_to_internal_multiple(FT_HANDLE t) {
         }
     }
 
+
+    int total_size = 0;
+    for (i = 0; total_size < 128*1024; ++i) {
+        total_size -= toku_bnc_memory_used(child_bncs[i%8]);
+        insert_random_message(child, child_bncs[i%8], &child_messages[i], &child_messages_is_fresh[i], xids_123, i%8);
+        total_size += toku_bnc_memory_used(child_bncs[i%8]);
+        if (i % 8 < 7) {
+            if (childkeys[i%8] == NULL || dummy_cmp(child_messages[i]->kdbt(), childkeys[i%8]->kdbt()) > 0) {
+                childkeys[i%8] = child_messages[i];
+            }
+        }
+    }
+    int num_child_messages = i;
+
+    NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    FTNODE XMALLOC(parent);
+    BLOCKNUM pblocknum = { 41 };
+    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
+    destroy_nonleaf_childinfo(BNC(parent, 0));
+    set_BNC(parent, 0, parent_bnc);
+    BP_STATE(parent, 0) = PT_AVAIL;
+
+    for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
+        insert_random_message(parent, parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
+    }
+    int num_parent_messages = i;
     toku_bnc_flush_to_child(t->ft, parent_bnc, child, TXNID_NONE);
 
     int total_messages = 0;
@@ -561,7 +576,7 @@ flush_to_internal_multiple(FT_HANDLE t) {
         toku_free(child_messages[i]->vdbt()->data);
         delete child_messages[i];
     }
-    destroy_nonleaf_childinfo(parent_bnc);
+    toku_ftnode_free(&parent);
     toku_ftnode_free(&child);
     toku_free(parent_messages);
     toku_free(child_messages);
@@ -646,9 +661,16 @@ flush_to_leaf(FT_HANDLE t, bool make_leaf_up_to_date, bool use_flush) {
         memset(&parent_messages_is_fresh[num_stale], true, (4096 - num_stale) * (sizeof parent_messages_is_fresh[0]));
     }
     NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    FTNODE XMALLOC(parent);
+    BLOCKNUM pblocknum = { 40 };
+    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
+    destroy_nonleaf_childinfo(BNC(parent, 0));
+    set_BNC(parent, 0, parent_bnc);
+    BP_STATE(parent, 0) = PT_AVAIL;
+
     MSN max_parent_msn = MIN_MSN;
     for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_update_message(parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
+        insert_random_update_message(parent, parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
     }
     int num_parent_messages = i;
 
@@ -877,9 +899,16 @@ flush_to_leaf_with_keyrange(FT_HANDLE t, bool make_leaf_up_to_date) {
         memset(&parent_messages_is_fresh[num_stale], true, (4096 - num_stale) * (sizeof parent_messages_is_fresh[0]));
     }
     NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    FTNODE XMALLOC(parent);
+    BLOCKNUM pblocknum = { 40 };
+    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
+    destroy_nonleaf_childinfo(BNC(parent, 0));
+    set_BNC(parent, 0, parent_bnc);
+    BP_STATE(parent, 0) = PT_AVAIL;
+
     MSN max_parent_msn = MIN_MSN;
     for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_update_message(parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
+        insert_random_update_message(parent, parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
     }
     int num_parent_messages = i;
 
@@ -1089,9 +1118,15 @@ compare_apply_and_flush(FT_HANDLE t, bool make_leaf_up_to_date) {
         memset(&parent_messages_is_fresh[num_stale], true, (4096 - num_stale) * (sizeof parent_messages_is_fresh[0]));
     }
     NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    FTNODE XMALLOC(parent);
+    BLOCKNUM pblocknum = { 40 };
+    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
+    destroy_nonleaf_childinfo(BNC(parent, 0));
+    set_BNC(parent, 0, parent_bnc);
+    BP_STATE(parent, 0) = PT_AVAIL;
     MSN max_parent_msn = MIN_MSN;
     for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_update_message(parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
+        insert_random_update_message(parent, parent_bnc, &parent_messages[i], parent_messages_is_fresh[i], xids_234, i%8, &parent_messages_applied[i], &max_parent_msn);
     }
     int num_parent_messages = i;
 

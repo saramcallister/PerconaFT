@@ -269,7 +269,8 @@ static void test_serialize_nonleaf(void) {
     toku::comparator cmp;
     cmp.create(string_key_cmp, nullptr);
 
-    toku_bnc_insert_msg(BNC(&sn, 0),
+    toku_bnc_insert_msg(&sn,
+			BNC(&sn, 0),
                         "a",
                         2,
                         "aval",
@@ -279,7 +280,8 @@ static void test_serialize_nonleaf(void) {
                         xids_0,
                         true,
                         cmp);
-    toku_bnc_insert_msg(BNC(&sn, 0),
+    toku_bnc_insert_msg(&sn,
+			BNC(&sn, 0),
                         "b",
                         2,
                         "bval",
@@ -289,7 +291,8 @@ static void test_serialize_nonleaf(void) {
                         xids_123,
                         false,
                         cmp);
-    toku_bnc_insert_msg(BNC(&sn, 1),
+    toku_bnc_insert_msg(&sn,
+			BNC(&sn, 1),
                         "x",
                         2,
                         "xval",

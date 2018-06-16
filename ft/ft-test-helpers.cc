@@ -252,7 +252,7 @@ int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, en
     MSN msn = next_dummymsn();
     toku::comparator cmp;
     cmp.create(testhelper_string_key_cmp, nullptr);
-    toku_bnc_insert_msg(BNC(node, childnum), key, keylen, val, vallen, msgtype, msn, xids_0, true, cmp);
+    toku_bnc_insert_msg(node, BNC(node, childnum), key, keylen, val, vallen, msgtype, msn, xids_0, true, cmp);
     cmp.destroy();
     // Hack to get the test working. The problem is that this test
     // is directly queueing something in a FIFO instead of 

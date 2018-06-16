@@ -385,6 +385,7 @@ find_bounds_within_message_tree(
 // as dirty (preserve previous state of 'dirty' bit).
 static void bnc_apply_messages_to_basement_node(
     FT_HANDLE t,      // used for comparison function
+    FTNODE node,
     BASEMENTNODE bn,  // where to apply messages
     FTNODE ancestor,  // the ancestor node where we can find messages to apply
     int childnum,  // which child buffer of ancestor contains messages we want
@@ -428,14 +429,14 @@ static void bnc_apply_messages_to_basement_node(
     // 1. broadcast messages and anything else, or a mix of fresh and stale
     // 2. only fresh messages
     // 3. only stale messages
-    if (bnc->broadcast_list.size() > 0 ||
+    if (node->broadcast_list().size() > 0 ||
         (stale_lbi != stale_ube && fresh_lbi != fresh_ube)) {
         // We have messages in multiple trees, so we grab all
         // the relevant messages' offsets and sort them by MSN, then apply
         // them in MSN order.
         const int buffer_size =
             ((stale_ube - stale_lbi) + (fresh_ube - fresh_lbi) +
-             bnc->broadcast_list.size());
+             node->broadcast_list().size());
         toku::scoped_malloc offsets_buf(buffer_size * sizeof(int32_t));
         int32_t *offsets = reinterpret_cast<int32_t *>(offsets_buf.get());
         struct store_msg_buffer_offset_extra sfo_extra = {.offsets = offsets,
@@ -456,7 +457,7 @@ static void bnc_apply_messages_to_basement_node(
         assert_zero(r);
 
         // Store offsets of all broadcast messages.
-        r = bnc->broadcast_list.iterate<struct store_msg_buffer_offset_extra,
+        r = node->broadcast_list().iterate<struct store_msg_buffer_offset_extra,
                                         store_msg_buffer_offset>(&sfo_extra);
         assert_zero(r);
         invariant(sfo_extra.i == buffer_size);
@@ -549,7 +550,7 @@ apply_ancestors_messages_to_bn(
           curr_ancestors->childnum != -1) {
         paranoid_invariant(BP_STATE(curr_ancestors->node,
                                     curr_ancestors->childnum) == PT_AVAIL);
-        bnc_apply_messages_to_basement_node(t, curr_bn, curr_ancestors->node,
+        bnc_apply_messages_to_basement_node(t, node, curr_bn, curr_ancestors->node,
                                             curr_ancestors->childnum,
                                             curr_bounds, gc_info, msgs_applied);
         // We don't want to check this ancestor node again if the
@@ -646,7 +647,7 @@ static bool bn_needs_ancestors_messages(
         if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > bn->max_msn_applied.msn) {
             paranoid_invariant(BP_STATE(curr_ancestors->node, curr_ancestors->childnum) == PT_AVAIL);
             NONLEAF_CHILDINFO bnc = BNC(curr_ancestors->node, curr_ancestors->childnum);
-            if (bnc->broadcast_list.size() > 0) {
+            if (node->broadcast_list().size() > 0) {
                 needs_ancestors_messages = true;
                 goto cleanup;
             }
@@ -1105,21 +1106,21 @@ int toku_bnc_n_entries(NONLEAF_CHILDINFO bnc) {
 
 // how much memory does this child buffer consume?
 long toku_bnc_memory_size(NONLEAF_CHILDINFO bnc) {
-    return (sizeof(*bnc) +
-            bnc->msg_buffer.memory_footprint() +
-            bnc->fresh_message_tree.memory_size() +
-            bnc->stale_message_tree.memory_size() +
-            bnc->broadcast_list.memory_size());
+  return (sizeof(*bnc) + bnc->msg_buffer.memory_footprint() +
+          bnc->fresh_message_tree.memory_size() +
+          bnc->stale_message_tree.memory_size()
+          // + bnc->broadcast_list.memory_size()
+          );
 }
 
 // how much memory in this child buffer holds useful data?
 // originally created solely for use by test program(s).
 long toku_bnc_memory_used(NONLEAF_CHILDINFO bnc) {
-    return (sizeof(*bnc) +
-            bnc->msg_buffer.memory_size_in_use() +
-            bnc->fresh_message_tree.memory_size() +
-            bnc->stale_message_tree.memory_size() +
-            bnc->broadcast_list.memory_size());
+  return (sizeof(*bnc) + bnc->msg_buffer.memory_size_in_use() +
+          bnc->fresh_message_tree.memory_size() +
+          bnc->stale_message_tree.memory_size()
+          // + bnc->broadcast_list.memory_size()
+          );
 }
 
 //
@@ -1707,7 +1708,7 @@ int toku_msg_buffer_key_msn_cmp(const struct toku_msg_buffer_key_msn_cmp_extra &
 // Effect: Enqueue the message represented by the parameters into the
 //   bnc's buffer, and put it in either the fresh or stale message tree,
 //   or the broadcast list.
-static void bnc_insert_msg(NONLEAF_CHILDINFO bnc, const ft_msg &msg, bool is_fresh, const toku::comparator &cmp) {
+static void bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const ft_msg &msg, bool is_fresh, const toku::comparator &cmp) {
     int r = 0;
     int32_t offset;
     bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
@@ -1725,25 +1726,25 @@ static void bnc_insert_msg(NONLEAF_CHILDINFO bnc, const ft_msg &msg, bool is_fre
         }
     } else {
         invariant(ft_msg_type_applies_all(type) || ft_msg_type_does_nothing(type));
-        const uint32_t idx = bnc->broadcast_list.size();
-        r = bnc->broadcast_list.insert_at(offset, idx);
+        const uint32_t idx = node->broadcast_list().size();
+        r = node->broadcast_list().insert_at(offset, idx);
         assert_zero(r);
     }
 }
 
 // This is only exported for tests.
-void toku_bnc_insert_msg(NONLEAF_CHILDINFO bnc, const void *key, uint32_t keylen, const void *data, uint32_t datalen, enum ft_msg_type type, MSN msn, XIDS xids, bool is_fresh, const toku::comparator &cmp)
+void toku_bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const void *key, uint32_t keylen, const void *data, uint32_t datalen, enum ft_msg_type type, MSN msn, XIDS xids, bool is_fresh, const toku::comparator &cmp)
 {
     DBT k, v;
     ft_msg msg(toku_fill_dbt(&k, key, keylen), toku_fill_dbt(&v, data, datalen), type, msn, xids);
-    bnc_insert_msg(bnc, msg, is_fresh, cmp);
+    bnc_insert_msg(node, bnc, msg, is_fresh, cmp);
 }
 
 // append a msg to a nonleaf node's child buffer
 static void ft_append_msg_to_child_buffer(const toku::comparator &cmp, FTNODE node,
                                           int childnum, const ft_msg &msg, bool is_fresh) {
     paranoid_invariant(BP_STATE(node,childnum) == PT_AVAIL);
-    bnc_insert_msg(BNC(node, childnum), msg, is_fresh, cmp);
+    bnc_insert_msg(node, BNC(node, childnum), msg, is_fresh, cmp);
     node->dirty() = 1;
 }
 

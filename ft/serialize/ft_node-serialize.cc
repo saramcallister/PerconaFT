@@ -1316,8 +1316,8 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
             node,
             bfe->search
             );
-        if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
-          bfe->type = ftnode_fetch_none;
+        //if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
+         // bfe->type = ftnode_fetch_none;
     } else if (bfe->type == ftnode_fetch_keymatch) {
         // we do not take into account prefetching yet
         // as of now, if we need a subset, the only thing

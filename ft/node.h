@@ -194,6 +194,8 @@ struct ftnode_header {
   // inject code path.
   TXNID _oldest_referenced_xid_known;
   struct ctpair *_ct_pair;
+  //broadcast msgs stored in header, appliable to all children
+  off_omt_t _broadcast_list;
   //bloom filter
   //bloom_filter filter;
 };
@@ -277,6 +279,7 @@ public:
   struct ctpair *&ct_pair() {
     return _header._ct_pair;
   }
+  off_omt_t &broadcast_list() { return _header._broadcast_list; }
 };
 typedef struct ftnode *FTNODE;
 
@@ -317,7 +320,7 @@ typedef toku::omt<int32_t, int32_t, true> marked_off_omt_t;
 // data of an available partition of a nonleaf ftnode
 struct ftnode_nonleaf_childinfo {
     message_buffer msg_buffer;
-    off_omt_t broadcast_list;
+//    off_omt_t broadcast_list;
     marked_off_omt_t fresh_message_tree;
     off_omt_t stale_message_tree;
     uint64_t flow[2];  // current and last checkpoint
@@ -473,16 +476,10 @@ unsigned int toku_bnc_nbytesinbuf(NONLEAF_CHILDINFO bnc);
 int toku_bnc_n_entries(NONLEAF_CHILDINFO bnc);
 long toku_bnc_memory_size(NONLEAF_CHILDINFO bnc);
 long toku_bnc_memory_used(NONLEAF_CHILDINFO bnc);
-void toku_bnc_insert_msg(NONLEAF_CHILDINFO bnc,
-                         const void *key,
-                         uint32_t keylen,
-                         const void *data,
-                         uint32_t datalen,
-                         enum ft_msg_type type,
-                         MSN msn,
-                         XIDS xids,
-                         bool is_fresh,
-                         const toku::comparator &cmp);
+void toku_bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const void *key,
+                         uint32_t keylen, const void *data, uint32_t datalen,
+                         enum ft_msg_type type, MSN msn, XIDS xids,
+                         bool is_fresh, const toku::comparator &cmp);
 void toku_bnc_empty(NONLEAF_CHILDINFO bnc);
 void toku_bnc_flush_to_child(FT ft,
                              NONLEAF_CHILDINFO bnc,

@@ -90,16 +90,22 @@ run_test(unsigned long eltsize, unsigned long nodesize, unsigned long repeat)
     cmp.create(long_key_cmp, nullptr);
 
     for (unsigned int i = 0; i < repeat; ++i) {
-        bnc = toku_create_empty_nl();
-        for (; toku_bnc_nbytesinbuf(bnc) <= nodesize; ++cur) {
-            toku_bnc_insert_msg(bnc,
-                                &keys[cur % n], sizeof keys[cur % n],
-                                vals[cur % n], eltsize - (sizeof keys[cur % n]),
-                                FT_NONE, next_dummymsn(), xids_123, true,
-                                cmp); assert_zero(r);
+      bnc = toku_create_empty_nl();
+      FTNODE XMALLOC(node);
+      BLOCKNUM blocknum = {20};
+      toku_initialize_empty_ftnode(node, blocknum, 2, 1, FT_LAYOUT_VERSION,
+                                   0);
+      destroy_nonleaf_childinfo(BNC(node, 0));
+      set_BNC(node, 0, bnc);
+      BP_STATE(node, 0) = PT_AVAIL;
+      for (; toku_bnc_nbytesinbuf(bnc) <= nodesize; ++cur) {
+        toku_bnc_insert_msg(node, bnc, &keys[cur % n], sizeof keys[cur % n],
+                            vals[cur % n], eltsize - (sizeof keys[cur % n]),
+                            FT_NONE, next_dummymsn(), xids_123, true, cmp);
+        assert_zero(r);
         }
-        nbytesinserted += toku_bnc_nbytesinbuf(bnc);
-        destroy_nonleaf_childinfo(bnc);
+      nbytesinserted += toku_bnc_nbytesinbuf(bnc);
+      toku_ftnode_free(node);
     }
 
     for (int i = 0; i < n; ++i) {
