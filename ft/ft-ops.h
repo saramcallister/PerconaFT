@@ -167,7 +167,7 @@ int toku_ft_insert_unique(FT_HANDLE ft, DBT *k, DBT *v, TOKUTXN txn, bool do_log
 void toku_ft_optimize (FT_HANDLE ft_h);
 
 // Effect: Insert a key and data pair into an ft if the oplsn is newer than the ft's lsn.  This function is called during recovery.
-void toku_ft_maybe_insert (FT_HANDLE ft_h, DBT *k, DBT *v, TOKUTXN txn, bool oplsn_valid, LSN oplsn, bool do_logging, enum ft_msg_type type);
+void toku_ft_maybe_insert (FT_HANDLE ft_h, DBT *k, DBT *v, TOKUTXN txn, bool oplsn_valid, LSN oplsn, bool do_logging, enum ft_msg_type_raw type);
 
 // Effect: Send an update message into an ft.  This function is called
 // during recovery.
@@ -197,7 +197,7 @@ TXNID toku_ft_get_oldest_referenced_xid_estimate(FT_HANDLE ft_h);
 struct txn_manager *toku_ft_get_txn_manager(FT_HANDLE ft_h);
 
 struct txn_gc_info;
-void toku_ft_send_insert(FT_HANDLE ft_h, DBT *key, DBT *val, XIDS xids, enum ft_msg_type type, txn_gc_info *gc_info);
+void toku_ft_send_insert(FT_HANDLE ft_h, DBT *key, DBT *val, XIDS xids, enum ft_msg_type_raw type, txn_gc_info *gc_info);
 void toku_ft_send_delete(FT_HANDLE ft_h, DBT *key, XIDS xids, txn_gc_info *gc_info);
 void toku_ft_send_commit_any(FT_HANDLE ft_h, DBT *key, XIDS xids, txn_gc_info *gc_info);
 

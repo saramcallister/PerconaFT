@@ -46,6 +46,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/serialize/block_table.h"
 //long ftnode_header_size (FTNODE node);
 unsigned int toku_serialize_ftnode_size(FTNODE node);
+unsigned int toku_serialize_ftnode_weighted_size(FTNODE node);
 int toku_serialize_ftnode_to_memory(
     FTNODE node,
     FTNODE_DISK_DATA *ndd,

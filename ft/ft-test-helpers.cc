@@ -139,7 +139,7 @@ int toku_testsetup_get_sersize(FT_HANDLE ft_handle, BLOCKNUM diskoff) // Return 
         );
     assert(r==0);
     FTNODE CAST_FROM_VOIDP(node, node_v);
-    int size = toku_serialize_ftnode_size(node);
+    int size = toku_serialize_ftnode_weighted_size(node);
     toku_unpin_ftnode(ft_handle->ft, node);
     return size;
 }
@@ -173,7 +173,7 @@ int toku_testsetup_insert_to_leaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, const
     ft_msg msg(
         toku_fill_dbt(&kdbt, key, keylen),
         toku_fill_dbt(&vdbt, val, vallen),
-        FT_INSERT,
+        {FT_INSERT, 1},
         next_dummymsn(),
         toku_xids_get_root_xids());
 
@@ -221,7 +221,7 @@ toku_pin_node_with_min_bfe(FTNODE* node, BLOCKNUM b, FT_HANDLE t)
         );
 }
 
-int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, enum ft_msg_type msgtype, const char *key, int keylen, const char *val, int vallen) {
+int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_handle, BLOCKNUM blocknum, enum ft_msg_type_raw msgtype, const char *key, int keylen, const char *val, int vallen) {
     void *node_v;
     int r;
 

@@ -62,12 +62,12 @@ compare_pair_to_key (FT_HANDLE ft_handle, const DBT *a, const void *key, uint32_
 }
 
 static int
-verify_msg_in_child_buffer(FT_HANDLE ft_handle, enum ft_msg_type type, MSN msn, const void *key, uint32_t keylen, const void *UU(data), uint32_t UU(datalen), XIDS UU(xids), const DBT *lesser_pivot, const DBT *greatereq_pivot)
+verify_msg_in_child_buffer(FT_HANDLE ft_handle, enum ft_msg_type_raw type, MSN msn, const void *key, uint32_t keylen, const void *UU(data), uint32_t UU(datalen), XIDS UU(xids), const DBT *lesser_pivot, const DBT *greatereq_pivot)
     __attribute__((warn_unused_result));
 
 UU()
 static int
-verify_msg_in_child_buffer(FT_HANDLE ft_handle, enum ft_msg_type type, MSN msn, const void *key, uint32_t keylen, const void *UU(data), uint32_t UU(datalen), XIDS UU(xids), const DBT *lesser_pivot, const DBT *greatereq_pivot) {
+verify_msg_in_child_buffer(FT_HANDLE ft_handle, enum ft_msg_type_raw type, MSN msn, const void *key, uint32_t keylen, const void *UU(data), uint32_t UU(datalen), XIDS UU(xids), const DBT *lesser_pivot, const DBT *greatereq_pivot) {
     int result = 0;
     if (msn.msn == ZERO_MSN.msn)
         result = EINVAL;
@@ -157,10 +157,10 @@ int verify_message_tree(const int32_t &offset, const uint32_t UU(idx), struct ve
     ft_msg msg = e->msg_buffer->get_message(offset, &k, &v);
     bool is_fresh = e->msg_buffer->get_freshness(offset);
     if (e->broadcast) {
-        VERIFY_ASSERTION(ft_msg_type_applies_all((enum ft_msg_type) msg.type()) || ft_msg_type_does_nothing((enum ft_msg_type) msg.type()),
+        VERIFY_ASSERTION(ft_msg_type_applies_all((enum ft_msg_type_raw) msg.type()) || ft_msg_type_does_nothing((enum ft_msg_type_raw) msg.type()),
                          e->i, "message found in broadcast list that is not a broadcast");
     } else {
-        VERIFY_ASSERTION(ft_msg_type_applies_once((enum ft_msg_type) msg.type()),
+        VERIFY_ASSERTION(ft_msg_type_applies_once((enum ft_msg_type_raw) msg.type()),
                          e->i, "message found in fresh or stale message tree that does not apply once");
         if (e->is_fresh) {
             if (e->messages_have_been_moved) {
@@ -272,7 +272,7 @@ struct verify_msg_fn {
     }
 
     int operator()(const ft_msg &msg, bool is_fresh) {
-        enum ft_msg_type type = (enum ft_msg_type) msg.type();
+        enum ft_msg_type_raw type = (enum ft_msg_type_raw) msg.type();
         MSN msn = msg.msn();
         XIDS xid = msg.xids();
         const void *key = msg.kdbt()->data;
@@ -313,9 +313,9 @@ struct verify_msg_fn {
             VERIFY_ASSERTION(total_count >= 1, msg_i, "a message was not found in either message tree");
         } else {
             VERIFY_ASSERTION(ft_msg_type_applies_all(type) || ft_msg_type_does_nothing(type), msg_i, "a message was found that does not apply either to all or to only one key");
-            struct count_msgs_extra extra = { .count = 0, .msn = msn, .msg_buffer = &bnc->msg_buffer };
-            bnc->broadcast_list.iterate<struct count_msgs_extra, count_msgs>(&extra);
-            VERIFY_ASSERTION(extra.count == 1, msg_i, "a broadcast message was not found in the broadcast list");
+            //struct count_msgs_extra extra = { .count = 0, .msn = msn, .msg_buffer = &bnc->msg_buffer };
+            //bnc->broadcast_list.iterate<struct count_msgs_extra, count_msgs>(&extra);
+            //VERIFY_ASSERTION(extra.count == 1, msg_i, "a broadcast message was not found in the broadcast list");
         }
         last_msn = msn;
         msg_i++;
@@ -399,8 +399,8 @@ toku_verify_ftnode_internal(FT_HANDLE ft_handle,
             }
 
             extra.broadcast = true;
-            r = bnc->broadcast_list.iterate<struct verify_message_tree_extra, verify_message_tree>(&extra);
-            if (r != 0) { result = r; goto done; }
+            //r = bnc->broadcast_list.iterate<struct verify_message_tree_extra, verify_message_tree>(&extra);
+            //if (r != 0) { result = r; goto done; }
         }
         else {
             BASEMENTNODE bn = BLB(node, i);

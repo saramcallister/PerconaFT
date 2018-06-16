@@ -714,7 +714,7 @@ static int64_t msg_modify_ule(ULE ule, const ft_msg &msg) {
     int64_t retval = 0;
     XIDS xids = msg.xids();
     invariant(toku_xids_get_num_xids(xids) < MAX_TRANSACTION_RECORDS);
-    enum ft_msg_type type = msg.type();
+    enum ft_msg_type_raw type = msg.type();
     if (FT_LIKELY(type != FT_OPTIMIZE && type != FT_OPTIMIZE_FOR_UPGRADE)) {
         ule_do_implicit_promotions(ule, xids);
     }

@@ -240,6 +240,7 @@ static void test_serialize_leaf_check_msn(enum ftnode_verify_type bft,
     sn.n_children() = 2;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
+    sn.broadcast_list().create();
     MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkey;
     sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
@@ -383,7 +384,7 @@ static void test_serialize_leaf_with_large_pivots(enum ftnode_verify_type bft,
     sn.n_children() = nrows;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
-
+    sn.broadcast_list().create();
     MALLOC_N(sn.n_children(), sn.bp());
     sn.pivotkeys().create_empty();
     for (int i = 0; i < sn.n_children(); ++i) {
@@ -540,7 +541,7 @@ static void test_serialize_leaf_with_many_rows(enum ftnode_verify_type bft,
     sn.n_children() = 1;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
-
+    sn.broadcast_list().create();
     XMALLOC_N(sn.n_children(), sn.bp());
     sn.pivotkeys().create_empty();
     for (int i = 0; i < sn.n_children(); ++i) {
@@ -695,7 +696,7 @@ static void test_serialize_leaf_with_large_rows(enum ftnode_verify_type bft,
     sn.n_children() = 1;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
-
+    sn.broadcast_list().create();
     MALLOC_N(sn.n_children(), sn.bp());
     sn.pivotkeys().create_empty();
     for (int i = 0; i < sn.n_children(); ++i) {
@@ -847,6 +848,7 @@ static void test_serialize_leaf_with_empty_basement_nodes(
     sn.n_children() = 7;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
+    sn.broadcast_list().create();
     MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkeys[6];
     toku_fill_dbt(&pivotkeys[0], "A", 2);
@@ -1103,6 +1105,8 @@ static void test_serialize_nonleaf(enum ftnode_verify_type bft, bool do_clone) {
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
     MALLOC_N(2, sn.bp());
+    MALLOC_N(2, sn.children_blocknum());
+    sn.broadcast_list().create();
     DBT pivotkey;
     sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
     BP_BLOCKNUM(&sn, 0).b = 30;

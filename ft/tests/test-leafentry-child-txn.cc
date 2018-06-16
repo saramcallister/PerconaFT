@@ -100,7 +100,7 @@ run_test(void) {
     // now do the application of xids to the ule    
     // do a commit
     {
-        ft_msg msg(&key, &val, FT_COMMIT_ANY, ZERO_MSN, msg_xids_2);
+        ft_msg msg(&key, &val, {FT_COMMIT_ANY, 1}, ZERO_MSN, msg_xids_2);
         test_msg_modify_ule(&ule_initial, msg);
         assert(ule->num_cuxrs == 2);
         assert(ule->uxrs[0].xid == TXNID_NONE);
@@ -111,7 +111,7 @@ run_test(void) {
 
     // do an abort
     {
-        ft_msg msg(&key, &val, FT_ABORT_ANY, ZERO_MSN, msg_xids_2);
+        ft_msg msg(&key, &val, {FT_ABORT_ANY, 1}, ZERO_MSN, msg_xids_2);
         test_msg_modify_ule(&ule_initial, msg);
         assert(ule->num_cuxrs == 2);
         assert(ule->uxrs[0].xid == TXNID_NONE);
@@ -123,7 +123,7 @@ run_test(void) {
     // do an insert
     val.data = &val_data_three;
     {
-        ft_msg msg(&key, &val, FT_INSERT, ZERO_MSN, msg_xids_2);
+        ft_msg msg(&key, &val, {FT_INSERT, 1}, ZERO_MSN, msg_xids_2);
         test_msg_modify_ule(&ule_initial, msg);
         // now that message applied, verify that things are good
         assert(ule->num_cuxrs == 2);

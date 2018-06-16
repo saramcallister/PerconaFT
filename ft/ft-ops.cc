@@ -658,7 +658,8 @@ void toku_ftnode_clone_callback(void *value_data,
     cloned_node->dirty() = node->dirty();
     cloned_node->fullhash() = node->fullhash();
     cloned_node->n_children() = node->n_children();
-
+    if (cloned_node->height() > 0)
+        XMALLOC_N(node->n_children(), cloned_node->children_blocknum());
     XMALLOC_N(node->n_children(), cloned_node->bp());
     // clone pivots
     cloned_node->pivotkeys().create_from_pivot_keys(node->pivotkeys());
@@ -1462,7 +1463,7 @@ static void inject_message_in_locked_node(
     // node we're injecting into, we know no other thread will get an MSN
     // after us and get that message into our subtree before us.
     MSN msg_msn = { .msn = toku_sync_add_and_fetch(&ft->h->max_msn_in_ft.msn, 1) };
-    ft_msg msg_with_msn(msg.kdbt(), msg.vdbt(), msg.type(), msg_msn, msg.xids());
+    ft_msg msg_with_msn(msg.kdbt(), msg.vdbt(), msg.type_all(), msg_msn, msg.xids());
     paranoid_invariant(msg_with_msn.msn().msn > node->max_msn_applied_to_node_on_disk().msn);
 
     STAT64INFO_S stats_delta = { 0,0 };
@@ -2141,10 +2142,10 @@ static int ft_leaf_get_relative_key_pos(FT ft, FTNODE leaf, const DBT *key, bool
 }
 
 static void ft_insert_directly_into_leaf(FT ft, FTNODE leaf, int target_childnum, DBT *key, DBT *val,
-                                         XIDS message_xids, enum ft_msg_type type, txn_gc_info *gc_info);
+                                         XIDS message_xids, enum ft_msg_type_raw type, txn_gc_info *gc_info);
 static int getf_nothing(uint32_t, const void *, uint32_t, const void *, void *, bool);
 
-static int ft_maybe_insert_into_rightmost_leaf(FT ft, DBT *key, DBT *val, XIDS message_xids, enum ft_msg_type type,
+static int ft_maybe_insert_into_rightmost_leaf(FT ft, DBT *key, DBT *val, XIDS message_xids, enum ft_msg_type_raw type,
                                                txn_gc_info *gc_info, bool unique)
 // Effect: Pins the rightmost leaf node and attempts to do an insert.
 //         There are three reasons why we may not succeed.
@@ -2234,7 +2235,7 @@ cleanup:
     return r;
 }
  
-static void ft_txn_log_insert(FT ft, DBT *key, DBT *val, TOKUTXN txn, bool do_logging, enum ft_msg_type type);
+static void ft_txn_log_insert(FT ft, DBT *key, DBT *val, TOKUTXN txn, bool do_logging, enum ft_msg_type_raw type);
 
 int toku_ft_insert_unique(FT_HANDLE ft_h, DBT *key, DBT *val, TOKUTXN txn, bool do_logging) {
 // Effect: Insert a unique key-val pair into the fractal tree.
@@ -2327,7 +2328,7 @@ void toku_ft_optimize (FT_HANDLE ft_h) {
         DBT val;
         toku_init_dbt(&key);
         toku_init_dbt(&val);
-        ft_msg msg(&key, &val, FT_OPTIMIZE, ZERO_MSN, message_xids);
+        ft_msg msg(&key, &val, {FT_OPTIMIZE, 1}, ZERO_MSN, message_xids);
 
         TXN_MANAGER txn_manager = toku_ft_get_txn_manager(ft_h);
         txn_manager_state txn_state_for_gc(txn_manager);
@@ -2396,7 +2397,7 @@ TXNID toku_ft_get_oldest_referenced_xid_estimate(FT_HANDLE ft_h) {
     return txn_manager != nullptr ? toku_txn_manager_get_oldest_referenced_xid_estimate(txn_manager) : TXNID_NONE;
 }
 
-static void ft_txn_log_insert(FT ft, DBT *key, DBT *val, TOKUTXN txn, bool do_logging, enum ft_msg_type type) {
+static void ft_txn_log_insert(FT ft, DBT *key, DBT *val, TOKUTXN txn, bool do_logging, enum ft_msg_type_raw type) {
     paranoid_invariant(type == FT_INSERT || type == FT_INSERT_NO_OVERWRITE);
 
     //By default use committed messages
@@ -2419,7 +2420,7 @@ static void ft_txn_log_insert(FT ft, DBT *key, DBT *val, TOKUTXN txn, bool do_lo
     }
 }
 
-void toku_ft_maybe_insert (FT_HANDLE ft_h, DBT *key, DBT *val, TOKUTXN txn, bool oplsn_valid, LSN oplsn, bool do_logging, enum ft_msg_type type) {
+void toku_ft_maybe_insert (FT_HANDLE ft_h, DBT *key, DBT *val, TOKUTXN txn, bool oplsn_valid, LSN oplsn, bool do_logging, enum ft_msg_type_raw type) {
     ft_txn_log_insert(ft_h->ft, key, val, txn, do_logging, type);
 
     LSN treelsn;
@@ -2446,14 +2447,14 @@ void toku_ft_maybe_insert (FT_HANDLE ft_h, DBT *key, DBT *val, TOKUTXN txn, bool
 }
 
 static void ft_insert_directly_into_leaf(FT ft, FTNODE leaf, int target_childnum, DBT *key, DBT *val,
-                                         XIDS message_xids, enum ft_msg_type type, txn_gc_info *gc_info)
+                                         XIDS message_xids, enum ft_msg_type_raw type, txn_gc_info *gc_info)
 // Effect: Insert directly into a leaf node a fractal tree. Does not do any logging.
 // Requires: Leaf is fully in memory and pinned for write.
 // Requires: If this insertion were to happen through the root node, the promotion
 //           algorithm would have selected the given leaf node as the point of injection.
 //           That means this function relies on the current implementation of promotion.
 {
-    ft_msg msg(key, val, type, ZERO_MSN, message_xids);
+    ft_msg msg(key, val, {type, 1}, ZERO_MSN, message_xids);
     size_t flow_deltas[] = { 0, 0 }; 
     inject_message_in_locked_node(ft, leaf, target_childnum, msg, flow_deltas, gc_info);
 }
@@ -2511,7 +2512,7 @@ void toku_ft_maybe_update(FT_HANDLE ft_h,
         XIDS message_xids =
             txn ? toku_txn_get_xids(txn) : toku_xids_get_root_xids();
         ft_msg msg(
-            key, update_function_extra, FT_UPDATE, ZERO_MSN, message_xids);
+            key, update_function_extra, {FT_UPDATE,1} , ZERO_MSN, message_xids);
         ft_send_update_msg(ft_h, msg, txn);
     }
     // updates get converted to insert messages, which should do a -1 on the
@@ -2547,19 +2548,20 @@ void toku_ft_maybe_update_broadcast(FT_HANDLE ft_h, const DBT *update_function_e
     } else {
         DBT empty_dbt;
         XIDS message_xids = txn ? toku_txn_get_xids(txn) : toku_xids_get_root_xids();
-        ft_msg msg(toku_init_dbt(&empty_dbt), update_function_extra, FT_UPDATE_BROADCAST_ALL, ZERO_MSN, message_xids);
+//the rc will be fixed later
+        ft_msg msg(toku_init_dbt(&empty_dbt), update_function_extra, {FT_UPDATE_BROADCAST_ALL, -1}, ZERO_MSN, message_xids);
         ft_send_update_msg(ft_h, msg, txn);
     }
 }
 
-void toku_ft_send_insert(FT_HANDLE ft_handle, DBT *key, DBT *val, XIDS xids, enum ft_msg_type type, txn_gc_info *gc_info) {
-    ft_msg msg(key, val, type, ZERO_MSN, xids);
+void toku_ft_send_insert(FT_HANDLE ft_handle, DBT *key, DBT *val, XIDS xids, enum ft_msg_type_raw type, txn_gc_info *gc_info) {
+    ft_msg msg(key, val, {type, -1}, ZERO_MSN, xids);
     toku_ft_root_put_msg(ft_handle->ft, msg, gc_info);
 }
 
 void toku_ft_send_commit_any(FT_HANDLE ft_handle, DBT *key, XIDS xids, txn_gc_info *gc_info) {
     DBT val;
-    ft_msg msg(key, toku_init_dbt(&val), FT_COMMIT_ANY, ZERO_MSN, xids);
+    ft_msg msg(key, toku_init_dbt(&val), {FT_COMMIT_ANY,1}, ZERO_MSN, xids);
     toku_ft_root_put_msg(ft_handle->ft, msg, gc_info);
 }
 
@@ -2632,7 +2634,7 @@ void toku_ft_maybe_delete(FT_HANDLE ft_h, DBT *key, TOKUTXN txn, bool oplsn_vali
 
 void toku_ft_send_delete(FT_HANDLE ft_handle, DBT *key, XIDS xids, txn_gc_info *gc_info) {
     DBT val; toku_init_dbt(&val);
-    ft_msg msg(key, toku_init_dbt(&val), FT_DELETE_ANY, ZERO_MSN, xids);
+    ft_msg msg(key, toku_init_dbt(&val), {FT_DELETE_ANY, 1}, ZERO_MSN, xids);
     toku_ft_root_put_msg(ft_handle->ft, msg, gc_info);
 }
 
@@ -5139,7 +5141,7 @@ int toku_ft_get_fragmentation(FT_HANDLE ft_handle, TOKU_DB_FRAGMENTATION report)
 static bool is_empty_fast_iter (FT_HANDLE ft_handle, FTNODE node) {
     if (node->height() > 0) {
         for (int childnum=0; childnum<node->n_children(); childnum++) {
-            if (toku_bnc_nbytesinbuf(BNC(node, childnum)) != 0) {
+            if (toku_bnc_nbytesinbuf(node, childnum) != 0) {
                 return 0; // it's not empty if there are bytes in buffers
             }
             FTNODE childnode;

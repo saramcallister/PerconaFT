@@ -249,10 +249,12 @@ static void test_serialize_nonleaf(void) {
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
     MALLOC_N(2, sn.bp());
+    MALLOC_N(2, sn.children_blocknum());
     DBT pivotkey;
     sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
     BP_BLOCKNUM(&sn, 0).b = 30;
     BP_BLOCKNUM(&sn, 1).b = 35;
+    sn.broadcast_list().create();
     BP_STATE(&sn, 0) = PT_AVAIL;
     BP_STATE(&sn, 1) = PT_AVAIL;
     set_BNC(&sn, 0, toku_create_empty_nl());
@@ -392,6 +394,7 @@ static void test_serialize_leaf(void) {
     MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkey;
     sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);
+    sn.broadcast_list().create();
     BP_STATE(&sn, 0) = PT_AVAIL;
     BP_STATE(&sn, 1) = PT_AVAIL;
     set_BLB(&sn, 0, toku_create_empty_bn());

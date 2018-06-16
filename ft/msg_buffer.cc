@@ -35,6 +35,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #ident "Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved."
 
+
 #include "ft/msg_buffer.h"
 #include "util/dbt.h"
 
@@ -58,6 +59,7 @@ void message_buffer::clone(message_buffer *src) {
 void message_buffer::destroy() {
     if (_memory != nullptr) {
         toku_free(_memory);
+        _memory = nullptr;
         _memory_usable = 0;
     }
 }
@@ -157,6 +159,82 @@ void message_buffer::_resize(size_t new_size) {
     _memory_usable = toku_malloc_usable_size(_memory);
 }
 
+void message_buffer::dequeue(int n) {
+  int32_t offs = 0;
+  for (int i = 0; i < n; i++) {
+    DBT k, v;
+    ft_msg msg = get_message(offs, &k, &v);
+    offs += msg_memsize_in_buffer(msg);
+  }
+  memmove(_memory, _memory + offs, _memory_used - offs);
+  int32_t new_size = _memory_used - offs;
+  if(!new_size) {
+	new_size = 1;
+  }
+  XREALLOC_N(new_size, _memory);
+  _num_entries -= n;
+  _memory_size = new_size;
+  _memory_used -= offs;
+  _memory_usable = toku_malloc_usable_size(_memory);
+}
+
+void message_buffer::merge_with(message_buffer &other) {
+  size_t newsize = _memory_size + other._memory_size;
+  char *temp;
+  XMALLOC_N(newsize, temp);
+  // merge sort
+  int merged = 0;
+  int32_t offset = 0, offset_other = 0, offset_temp = 0;
+  while (offset < _memory_used && offset_other < other._memory_used) {
+    DBT k1, v1, k2, v2;
+    const ft_msg msg = this->get_message(offset, &k1, &v1);
+    const ft_msg msg_other = other.get_message(offset_other, &k2, &v2);
+    char *src;
+    int32_t gap;
+    if (msg.msn().msn < msg_other.msn().msn) {
+      src = _memory + offset;
+      gap = this->msg_memsize_in_buffer(msg);
+      offset += gap;
+    } else if (msg.msn().msn > msg_other.msn().msn) {
+      src = other._memory + offset_other;
+      gap = other.msg_memsize_in_buffer(msg_other);
+      offset_other += gap;
+    } else {
+      src = _memory + offset;
+      gap = msg_memsize_in_buffer(msg);
+      offset_other += gap;
+      offset += gap;
+      int rc1, rc2;
+      get_broadcast_message_ref_count(offset, &rc1);
+      other.get_broadcast_message_ref_count(offset_other, &rc2);
+      set_broadcast_message_ref_count(offset, rc1+rc2);
+      merged ++;
+    }
+    memcpy(temp + offset_temp, src, gap);
+    offset_temp += gap;
+  }
+  if (offset >= _memory_used) {
+    if (offset_other < other._memory_used) {
+      memcpy(temp + offset_temp, other._memory + offset_other,
+             other._memory_used - offset_other);
+      offset_temp += other._memory_used - offset_other;
+    }
+  } else {
+    assert(offset_other >= other._memory_used);
+    if (offset < _memory_used) {
+      memcpy(temp + offset_temp, _memory + offset, _memory_used - offset);
+      offset_temp += _memory_used - offset;
+    }
+  }
+
+  toku_free(_memory);
+  _memory = temp;
+  _memory_size = newsize;
+  _memory_used = offset_temp;
+  _num_entries = _num_entries + other._num_entries - merged;
+  _memory_usable = toku_malloc_usable_size(_memory);
+}
+
 static int next_power_of_two (int n) {
     int r = 4096;
     while (r < n) {
@@ -190,6 +268,10 @@ void message_buffer::enqueue(const ft_msg &msg, bool is_fresh, int32_t *offset) 
     memcpy(e_key, msg.kdbt()->data, keylen);
     entry->vallen = datalen;
     memcpy(e_key + keylen, msg.vdbt()->data, datalen);
+    if (ft_msg_type_applies_all((enum ft_msg_type_raw) entry->type)) {
+      memcpy(e_key + keylen + datalen, (int *) &(((ft_msg)msg).ref_count_of_broadcast_msg()),
+             sizeof(int));
+    }
     if (offset) {
         *offset = _memory_used;
     }
@@ -207,16 +289,41 @@ bool message_buffer::get_freshness(int32_t offset) const {
     return entry->is_fresh;
 }
 
-ft_msg message_buffer::get_message(int32_t offset, DBT *keydbt, DBT *valdbt) const {
-    struct buffer_entry *entry = get_buffer_entry(offset);
-    uint32_t keylen = entry->keylen;
-    uint32_t vallen = entry->vallen;
-    enum ft_msg_type type = (enum ft_msg_type) entry->type;
-    MSN msn = entry->msn;
-    const XIDS xids = (XIDS) &entry->xids_s;
-    const void *key = toku_xids_get_end_of_array(xids);
-    const void *val = (uint8_t *) key + entry->keylen;
-    return ft_msg(toku_fill_dbt(keydbt, key, keylen), toku_fill_dbt(valdbt, val, vallen), type, msn, xids);
+ft_msg message_buffer::get_message(int32_t offset, DBT *keydbt,
+                                   DBT *valdbt) const {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  uint32_t keylen = entry->keylen;
+  uint32_t vallen = entry->vallen;
+  enum ft_msg_type_raw type = (enum ft_msg_type_raw)entry->type;
+  MSN msn = entry->msn;
+  const XIDS xids = (XIDS)&entry->xids_s;
+  const void *key = toku_xids_get_end_of_array(xids);
+  const void *val = (uint8_t *)key + entry->keylen;
+  ft_msg_type t;
+  t.type = type;
+  t.ref_count = 0xdeadbeef;
+  if (ft_msg_type_applies_all(type)) {
+    uint8_t *pos = (uint8_t *)key + keylen + vallen;
+    t.ref_count = *((int *)pos);
+  }
+  return ft_msg(toku_fill_dbt(keydbt, key, keylen),
+                toku_fill_dbt(valdbt, val, vallen), t, msn, xids);
+}
+
+void message_buffer::get_broadcast_message_ref_count(int32_t offset, int * rc) {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  assert(ft_msg_type_applies_all((enum ft_msg_type_raw) entry->type));
+  if (rc != nullptr) {
+    unsigned char *e_key = toku_xids_get_end_of_array(&entry->xids_s);
+    memcpy(rc, e_key + entry->keylen + entry->vallen, sizeof(int));
+  }
+}
+
+void message_buffer::set_broadcast_message_ref_count(int32_t offset, int rc) {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  assert(ft_msg_type_applies_all((enum ft_msg_type_raw) entry->type));
+  unsigned char *e_key = toku_xids_get_end_of_array(&entry->xids_s);
+  memcpy(e_key + entry->keylen + entry->vallen, &rc, sizeof(int));
 }
 
 void message_buffer::get_message_key_msn(int32_t offset, DBT *key, MSN *msn) const {
@@ -236,6 +343,29 @@ int message_buffer::num_entries() const {
 size_t message_buffer::buffer_size_in_use() const {
     return _memory_used;
 }
+
+size_t
+message_buffer::buffer_weighted_size_in_use() const {
+  size_t total_weight = 0;
+  struct weight_node_size {
+    size_t *accu_weight;
+    weight_node_size(size_t *accu) : accu_weight(accu) {}
+    int operator()(const ft_msg &msg, bool UU(is_fresh)) {
+      enum ft_msg_type_raw type = msg.type();
+      int rc;
+      if (ft_msg_type_applies_all(type)) {
+        rc = ((ft_msg)msg).ref_count_of_broadcast_msg();
+      } else {
+        rc = 1;
+      }
+      *accu_weight += rc * msg_memsize_in_buffer(msg);
+      return 0;
+    }
+  } wns(&total_weight);
+  iterate(wns);
+  return total_weight;
+}
+
 
 size_t message_buffer::memory_size_in_use() const {
     return sizeof(*this) + _memory_used;
@@ -285,8 +415,11 @@ void message_buffer::serialize_to_wbuf(struct wbuf *wb) const {
 //    iterate(serialize_fn);
 //}
 size_t message_buffer::msg_memsize_in_buffer(const ft_msg &msg) {
-    const uint32_t keylen = msg.kdbt()->size;
-    const uint32_t datalen = msg.vdbt()->size;
-    const size_t xidslen = toku_xids_get_size(msg.xids());
-    return sizeof(struct buffer_entry) + keylen + datalen + xidslen - sizeof(XIDS_S);
+  const uint32_t keylen = msg.kdbt()->size;
+  const uint32_t datalen = msg.vdbt()->size;
+  const size_t xidslen = toku_xids_get_size(msg.xids());
+  size_t basic_size =
+      sizeof(struct buffer_entry) + keylen + datalen + xidslen - sizeof(XIDS_S);
+  return ft_msg_type_applies_all(msg.type()) ? basic_size + sizeof(int)
+                                             : basic_size;
 }

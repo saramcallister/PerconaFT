@@ -61,21 +61,24 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
     n->bp() = 0;
     n->n_children() = num_children;
     n->oldest_referenced_xid_known() = TXNID_NONE;
+    n->broadcast_list().create();
 
     if (num_children > 0) {
+      if (height > 0)
         XMALLOC_N(num_children, n->children_blocknum());
-        XMALLOC_N(num_children, n->bp());
-        for (int i = 0; i < num_children; i++) {
-            BP_BLOCKNUM(n,i).b=0;
-            BP_STATE(n,i) = PT_INVALID;
-            BP_WORKDONE(n,i) = 0;
-            BP_INIT_TOUCHED_CLOCK(n, i);
-            set_BNULL(n,i);
-            if (height > 0) {
-                set_BNC(n, i, toku_create_empty_nl());
-            } else {
-                set_BLB(n, i, toku_create_empty_bn());
-            }
+      XMALLOC_N(num_children, n->bp());
+      for (int i = 0; i < num_children; i++) {
+        if (height > 0)
+          BP_BLOCKNUM(n, i).b = 0;
+        BP_STATE(n, i) = PT_INVALID;
+        BP_WORKDONE(n, i) = 0;
+        BP_INIT_TOUCHED_CLOCK(n, i);
+        set_BNULL(n, i);
+        if (height > 0) {
+          set_BNC(n, i, toku_create_empty_nl());
+        } else {
+          set_BLB(n, i, toku_create_empty_bn());
+        }
         }
     }
     n->dirty() = 1;  // special case exception, it's okay to mark as dirty because the basements are empty
@@ -106,7 +109,9 @@ void toku_destroy_ftnode_internals(FTNODE node) {
         }
         set_BNULL(node, i);
     }
-    toku_free(node->children_blocknum());
+    node->broadcast_list().destroy();
+    if (node->height() > 0) 
+      toku_free(node->children_blocknum());
     toku_free(node->bp());
     node->bp() = NULL;
 }
@@ -141,12 +146,13 @@ void toku_ftnode_update_disk_stats(FTNODE ftnode, FT ft, bool for_checkpoint) {
 
 void toku_ftnode_clone_partitions(FTNODE node, FTNODE cloned_node) {
     for (int i = 0; i < node->n_children(); i++) {
-        BP_BLOCKNUM(cloned_node,i) = BP_BLOCKNUM(node,i);
-        paranoid_invariant(BP_STATE(node,i) == PT_AVAIL);
-        BP_STATE(cloned_node,i) = PT_AVAIL;
-        BP_WORKDONE(cloned_node, i) = BP_WORKDONE(node, i);
-        if (node->height() == 0) {
-            set_BLB(cloned_node, i, toku_clone_bn(BLB(node,i)));
+      if (node->height() > 0)
+        BP_BLOCKNUM(cloned_node, i) = BP_BLOCKNUM(node, i);
+      paranoid_invariant(BP_STATE(node, i) == PT_AVAIL);
+      BP_STATE(cloned_node, i) = PT_AVAIL;
+      BP_WORKDONE(cloned_node, i) = BP_WORKDONE(node, i);
+      if (node->height() == 0) {
+        set_BLB(cloned_node, i, toku_clone_bn(BLB(node, i)));
         } else {
             set_BNC(cloned_node, i, toku_clone_nl(BNC(node,i)));
         }
@@ -176,16 +182,20 @@ BASEMENTNODE toku_detach_bn(FTNODE node, int childnum) {
 // 
 // Orthopush
 //
+typedef struct offset_buffer_papir {
+	uint32_t offset;
+	message_buffer * buffer;
+} offset_buffer_pair;
 
 struct store_msg_buffer_offset_extra {
-    int32_t *offsets;
+    offset_buffer_pair *offset_buffer_pairs;
     int i;
 };
 
 int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struct store_msg_buffer_offset_extra *const extra) __attribute__((nonnull(3)));
 int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struct store_msg_buffer_offset_extra *const extra)
 {
-    extra->offsets[extra->i] = offset;
+    extra->offset_buffer_pairs[extra->i].offset = offset;
     extra->i++;
     return 0;
 }
@@ -195,12 +205,16 @@ int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struc
  * figure out the MSN of each message, and compare those MSNs.  Returns 1,
  * 0, or -1 if a is larger than, equal to, or smaller than b.
  */
-int msg_buffer_offset_msn_cmp(message_buffer &msg_buffer, const int32_t &ao, const int32_t &bo);
-int msg_buffer_offset_msn_cmp(message_buffer &msg_buffer, const int32_t &ao, const int32_t &bo)
+int msg_buffer_offset_msn_cmp(message_buffer & UU(msg_buffer), const offset_buffer_pair & ao, const offset_buffer_pair & bo);
+int msg_buffer_offset_msn_cmp(message_buffer & UU(msg_buffer), const offset_buffer_pair & ao, const offset_buffer_pair  &bo)
 {
     MSN amsn, bmsn;
-    msg_buffer.get_message_key_msn(ao, nullptr, &amsn);
-    msg_buffer.get_message_key_msn(bo, nullptr, &bmsn);
+    int32_t a_off = ao.offset;
+    int32_t b_off = bo.offset;
+    message_buffer * a_buf = ao.buffer;
+    message_buffer * b_buf = bo.buffer;
+    a_buf->get_message_key_msn(a_off, nullptr, &amsn);
+    b_buf->get_message_key_msn(b_off, nullptr, &bmsn);
     if (amsn.msn > bmsn.msn) {
         return +1;
     }
@@ -383,9 +397,26 @@ find_bounds_within_message_tree(
 // apply the message to the basement node.  We treat the bounds as minus
 // or plus infinity respectively if they are NULL.  Do not mark the node
 // as dirty (preserve previous state of 'dirty' bit).
+struct broadcast_msgs_applicable_to_bnc {
+  MSN most_recent_flushed_msn;
+  int *i;
+  int32_t *offsets;
+  broadcast_msgs_applicable_to_bnc(MSN msn, int *num, int32_t *offs)
+      : most_recent_flushed_msn(msn), i(num), offsets(offs) {
+    *i = 0;
+  }
+  int operator() (const ft_msg &msg, bool UU(is_fresh), int32_t current_off) {
+    if (msg.msn().msn > most_recent_flushed_msn.msn) {
+      offsets[*i] = current_off;
+      *i = *i + 1;
+    }
+    return 0;
+  }
+};
+
 static void bnc_apply_messages_to_basement_node(
     FT_HANDLE t,      // used for comparison function
-    FTNODE node,
+    FTNODE UU(node),
     BASEMENTNODE bn,  // where to apply messages
     FTNODE ancestor,  // the ancestor node where we can find messages to apply
     int childnum,  // which child buffer of ancestor contains messages we want
@@ -429,55 +460,75 @@ static void bnc_apply_messages_to_basement_node(
     // 1. broadcast messages and anything else, or a mix of fresh and stale
     // 2. only fresh messages
     // 3. only stale messages
-    if (node->broadcast_list().size() > 0 ||
+
+    size_t max_size = ancestor->broadcast_list().num_entries();
+    int32_t *offsets;
+    int broadcast_size;
+    XMALLOC_N(max_size, offsets);
+    struct broadcast_msgs_applicable_to_bnc bmatc(
+        bnc->most_recent_flushed_broadcast_msg, &broadcast_size, offsets);
+    ancestor->broadcast_list().iterate2(bmatc);
+    if (broadcast_size > 0 ||
         (stale_lbi != stale_ube && fresh_lbi != fresh_ube)) {
-        // We have messages in multiple trees, so we grab all
-        // the relevant messages' offsets and sort them by MSN, then apply
-        // them in MSN order.
-        const int buffer_size =
-            ((stale_ube - stale_lbi) + (fresh_ube - fresh_lbi) +
-             node->broadcast_list().size());
-        toku::scoped_malloc offsets_buf(buffer_size * sizeof(int32_t));
-        int32_t *offsets = reinterpret_cast<int32_t *>(offsets_buf.get());
-        struct store_msg_buffer_offset_extra sfo_extra = {.offsets = offsets,
-                                                          .i = 0};
+      // We have messages in multiple trees, so we grab all
+      // the relevant messages' offsets and sort them by MSN, then apply
+      // them in MSN order.
+      const int buffer_size =
+          (stale_ube - stale_lbi) + (fresh_ube - fresh_lbi) +
+	broadcast_size;
+      toku::scoped_malloc offsets_buf(buffer_size * sizeof(offset_buffer_pair));
+      offset_buffer_pair *offset_buffer_pairs = reinterpret_cast<offset_buffer_pair *>(offsets_buf.get());
+      struct store_msg_buffer_offset_extra sfo_extra = {.offset_buffer_pairs = offset_buffer_pairs,
+                                                        .i = 0};
 
-        // Populate offsets array with offsets to stale messages
-        r = bnc->stale_message_tree
-                .iterate_on_range<struct store_msg_buffer_offset_extra,
-                                  store_msg_buffer_offset>(
-                    stale_lbi, stale_ube, &sfo_extra);
-        assert_zero(r);
+      // Populate offsets array with offsets to stale messages
+      r = bnc->stale_message_tree.iterate_on_range<
+          struct store_msg_buffer_offset_extra, store_msg_buffer_offset>(
+          stale_lbi, stale_ube, &sfo_extra);
+      assert_zero(r);
 
-        // Then store fresh offsets, and mark them to be moved to stale later.
-        r = bnc->fresh_message_tree
-                .iterate_and_mark_range<struct store_msg_buffer_offset_extra,
-                                        store_msg_buffer_offset>(
-                    fresh_lbi, fresh_ube, &sfo_extra);
-        assert_zero(r);
+      // Then store fresh offsets, and mark them to be moved to stale later.
+      r = bnc->fresh_message_tree.iterate_and_mark_range<
+          struct store_msg_buffer_offset_extra, store_msg_buffer_offset>(
+          fresh_lbi, fresh_ube, &sfo_extra);
+      assert_zero(r);
 
-        // Store offsets of all broadcast messages.
-        r = node->broadcast_list().iterate<struct store_msg_buffer_offset_extra,
-                                        store_msg_buffer_offset>(&sfo_extra);
-        assert_zero(r);
-        invariant(sfo_extra.i == buffer_size);
-
-        // Sort by MSN.
-        toku::sort<int32_t, message_buffer, msg_buffer_offset_msn_cmp>::
-            mergesort_r(offsets, buffer_size, bnc->msg_buffer);
-
-        // Apply the messages in MSN order.
-        for (int i = 0; i < buffer_size; ++i) {
-            *msgs_applied = true;
-            do_bn_apply_msg(t,
-                            bn,
-                            &bnc->msg_buffer,
-                            offsets[i],
-                            gc_info,
-                            &workdone_this_ancestor,
-                            &stats_delta,
-                            &logical_rows_delta);
+      // set up the message buffer for sfo_extra
+      int idx;
+      for (idx = 0; idx < sfo_extra.i; idx++)
+        sfo_extra.offset_buffer_pairs[idx].buffer = &bnc->msg_buffer;
+      // Store offsets of all broadcast messages.
+      struct all_offsets {
+        struct store_msg_buffer_offset_extra *extra;
+	FTNODE node;
+        all_offsets(struct store_msg_buffer_offset_extra *e, FTNODE n) : extra(e), node(n) {}
+        int operator()(const ft_msg UU(msg), bool UU(is_fresh), int32_t offset) {
+          extra->offset_buffer_pairs[extra->i].offset = offset;
+          extra->offset_buffer_pairs[extra->i].buffer = &node->broadcast_list();
+          extra->i++;
+          return 0;
         }
+
+      } collect_all_offsets(&sfo_extra, ancestor);
+      r = ancestor->broadcast_list().iterate2(collect_all_offsets);
+      assert_zero(r);
+      //      for(; idx < sfo_extra.i; idx++)
+      //      	sfo_extra.offset_buffer_pairs[idx].buffer =
+      //      &node->broadcast_list();
+      invariant(sfo_extra.i == buffer_size);
+
+      // Sort by MSN.
+      toku::sort<offset_buffer_pair, message_buffer,
+                 msg_buffer_offset_msn_cmp>::mergesort_r(offset_buffer_pairs, buffer_size,
+                                                         bnc->msg_buffer);
+
+      // Apply the messages in MSN order.
+      for (int i = 0; i < buffer_size; ++i) {
+      *msgs_applied = true;
+      do_bn_apply_msg(t, bn, offset_buffer_pairs[i].buffer, offset_buffer_pairs[i].offset, gc_info,
+                      &workdone_this_ancestor, &stats_delta,
+                      &logical_rows_delta);
+      }
     } else if (stale_lbi == stale_ube) {
         // No stale messages to apply, we just apply fresh messages, and mark
         // them to be moved to stale later.
@@ -517,7 +568,7 @@ static void bnc_apply_messages_to_basement_node(
                     stale_lbi, stale_ube, &iter_extra);
         assert_zero(r);
     }
-    //
+    toku_free(offsets);
     // update stats
     //
     if (workdone_this_ancestor > 0) {
@@ -647,7 +698,16 @@ static bool bn_needs_ancestors_messages(
         if (curr_ancestors->node->max_msn_applied_to_node_on_disk().msn > bn->max_msn_applied.msn) {
             paranoid_invariant(BP_STATE(curr_ancestors->node, curr_ancestors->childnum) == PT_AVAIL);
             NONLEAF_CHILDINFO bnc = BNC(curr_ancestors->node, curr_ancestors->childnum);
-            if (node->broadcast_list().size() > 0) {
+
+	    size_t max_size = curr_ancestors->node->broadcast_list().num_entries();
+    	    int32_t *offsets;
+    	    int broadcast_size;
+    	    XMALLOC_N(max_size, offsets);
+    	    struct broadcast_msgs_applicable_to_bnc bmatc(
+            bnc->most_recent_flushed_broadcast_msg, &broadcast_size, offsets);
+            curr_ancestors->node->broadcast_list().iterate2(bmatc);
+
+            if (broadcast_size > 0) {
                 needs_ancestors_messages = true;
                 goto cleanup;
             }
@@ -1037,7 +1097,7 @@ enum reactivity toku_ftnode_get_leaf_reactivity(FTNODE node, uint32_t nodesize) 
     enum reactivity re = RE_STABLE;
     toku_ftnode_assert_fully_in_memory(node);
     paranoid_invariant(node->height()==0);
-    unsigned int size = toku_serialize_ftnode_size(node);
+    unsigned int size = toku_serialize_ftnode_weighted_size(node);
     if (size > nodesize && toku_ftnode_leaf_num_entries(node) > 1) {
         re = RE_FISSIBLE;
     } else if ((size*4) < nodesize && !BLB_SEQINSERT(node, node->n_children()-1)) {
@@ -1067,14 +1127,39 @@ enum reactivity toku_ftnode_get_reactivity(FT ft, FTNODE node) {
     }
 }
 
-unsigned int toku_bnc_nbytesinbuf(NONLEAF_CHILDINFO bnc) {
-    return bnc->msg_buffer.buffer_size_in_use();
+struct broadcast_weight_bnc {
+  size_t *accu_weight;
+  MSN most_recent_flushed_broadcast_msn;
+  message_buffer *buffer;
+  broadcast_weight_bnc(size_t *accu, MSN msn, message_buffer *buf)
+      : accu_weight(accu), most_recent_flushed_broadcast_msn(msn), buffer(buf) {
+  }
+  int operator()(const ft_msg &msg, bool UU(is_fresh)) {
+    enum ft_msg_type_raw type = msg.type();
+    assert(ft_msg_type_applies_all(type));
+    if (msg.msn().msn > most_recent_flushed_broadcast_msn.msn) {
+      accu_weight += buffer->msg_memsize_in_buffer(msg);
+    }
+    return 0;
+  }
+};
+
+// unsigned int toku_bnc_nbytesinbuf(NONLEAF_CHILDINFO bnc) {
+unsigned int toku_bnc_nbytesinbuf(FTNODE node, int nth) {
+  NONLEAF_CHILDINFO bnc = BNC(node, nth);
+  size_t broadcast_weight = 0;
+  struct broadcast_weight_bnc bwb(
+      &broadcast_weight, BNC(node, nth)->most_recent_flushed_broadcast_msg,
+      &node->broadcast_list());
+  int r = node->broadcast_list().iterate(bwb);
+  assert(r == 0);
+  return bnc->msg_buffer.buffer_size_in_use() + broadcast_weight;
 }
 
 // Return true if the size of the buffers plus the amount of work done is large enough.
 // Return false if there is nothing to be flushed (the buffers empty).
 bool toku_ftnode_nonleaf_is_gorged(FTNODE node, uint32_t nodesize) {
-    uint64_t size = toku_serialize_ftnode_size(node);
+    uint64_t size = toku_serialize_ftnode_weighted_size(node);
 
     bool buffers_are_empty = true;
     toku_ftnode_assert_fully_in_memory(node);
@@ -1090,7 +1175,7 @@ bool toku_ftnode_nonleaf_is_gorged(FTNODE node, uint32_t nodesize) {
         size += BP_WORKDONE(node, child);
     }
     for (int child = 0; child < node->n_children(); ++child) {
-        if (toku_bnc_nbytesinbuf(BNC(node, child)) > 0) {
+        if (toku_bnc_nbytesinbuf(node, child) > 0) {
             buffers_are_empty = false;
             break;
         }
@@ -1134,6 +1219,7 @@ void toku_ft_nonleaf_append_child(FTNODE node, FTNODE child, const DBT *pivotkey
     int childnum = node->n_children();
     node->n_children()++;
     REALLOC_N(node->n_children(), node->bp());
+    REALLOC_N(node->n_children(), node->children_blocknum());
     BP_BLOCKNUM(node,childnum) = child->blocknum();
     BP_STATE(node,childnum) = PT_AVAIL;
     BP_WORKDONE(node, childnum)   = 0;
@@ -1268,7 +1354,7 @@ static void setval_fun (const DBT *new_val, void *svextra_v) {
         ft_msg msg(
             svextra->key,
             new_val ? new_val : toku_init_dbt(&val),
-            new_val ? FT_INSERT : FT_DELETE_ANY,
+            {new_val ? FT_INSERT : FT_DELETE_ANY, 1},
             svextra->msn,
             svextra->xids);
         toku_ft_bn_apply_msg_once(
@@ -1500,7 +1586,7 @@ void toku_ft_bn_apply_msg(
                 ft_msg curr_msg(
                     toku_fill_dbt(&curr_keydbt, curr_keyp, curr_keylen),
                     msg.vdbt(),
-                    msg.type(),
+                    msg.type_all(),
                     msg.msn(),
                     msg.xids());
                 toku_ft_bn_apply_msg_once(
@@ -1548,7 +1634,7 @@ void toku_ft_bn_apply_msg(
                 ft_msg curr_msg(
                     toku_fill_dbt(&curr_keydbt, curr_keyp, curr_keylen),
                     msg.vdbt(),
-                    msg.type(),
+                    msg.type_all(),
                     msg.msn(),
                     msg.xids());
                 toku_ft_bn_apply_msg_once(
@@ -1670,6 +1756,7 @@ void toku_ft_bn_apply_msg(
         break;
     }
     case FT_NONE: break; // don't do anything
+    default: break;
     }
 
     return;
@@ -1708,12 +1795,13 @@ int toku_msg_buffer_key_msn_cmp(const struct toku_msg_buffer_key_msn_cmp_extra &
 // Effect: Enqueue the message represented by the parameters into the
 //   bnc's buffer, and put it in either the fresh or stale message tree,
 //   or the broadcast list.
-static void bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const ft_msg &msg, bool is_fresh, const toku::comparator &cmp) {
+static void bnc_insert_msg(FTNODE UU(node), NONLEAF_CHILDINFO bnc, const ft_msg &msg, bool is_fresh, const toku::comparator &cmp) {
     int r = 0;
     int32_t offset;
-    bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
-    enum ft_msg_type type = msg.type();
+//    bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
+    enum ft_msg_type_raw type = msg.type();
     if (ft_msg_type_applies_once(type)) {
+        bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
         DBT key;
         toku_fill_dbt(&key, msg.kdbt()->data, msg.kdbt()->size);
         struct toku_msg_buffer_key_msn_heaviside_extra extra(cmp, &bnc->msg_buffer, &key, msg.msn());
@@ -1725,19 +1813,33 @@ static void bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const ft_msg &msg
             assert_zero(r);
         }
     } else {
-        invariant(ft_msg_type_applies_all(type) || ft_msg_type_does_nothing(type));
-        const uint32_t idx = node->broadcast_list().size();
-        r = node->broadcast_list().insert_at(offset, idx);
-        assert_zero(r);
+      invariant(ft_msg_type_applies_all(type) ||
+                ft_msg_type_does_nothing(type));
+      if (ft_msg_type_does_nothing(type)) {
+        bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
+      }
+      //	msg.ref_count_of_broadcast_msg() = node->n_children; //ref count
+      //of a broadcast msg
+      //      r = node->broadcast_list().enqueue(msg, is_fresh, &offset);
+      assert_zero(r);
     }
 }
 
 // This is only exported for tests.
-void toku_bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const void *key, uint32_t keylen, const void *data, uint32_t datalen, enum ft_msg_type type, MSN msn, XIDS xids, bool is_fresh, const toku::comparator &cmp)
+void toku_bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const void *key, uint32_t keylen, const void *data, uint32_t datalen, enum ft_msg_type_raw type, MSN msn, XIDS xids, bool is_fresh, const toku::comparator &cmp)
 {
-    DBT k, v;
-    ft_msg msg(toku_fill_dbt(&k, key, keylen), toku_fill_dbt(&v, data, datalen), type, msn, xids);
+  DBT k, v;
+
+  if (ft_msg_type_applies_all(type)) {
+    int32_t offset;
+    ft_msg msg(toku_fill_dbt(&k, key, keylen), toku_fill_dbt(&v, data, datalen),
+               {type, node->n_children()}, msn, xids);
+    node->broadcast_list().enqueue(msg, is_fresh, &offset);
+  } else {
+    ft_msg msg(toku_fill_dbt(&k, key, keylen), toku_fill_dbt(&v, data, datalen),
+               {type, 1}, msn, xids);
     bnc_insert_msg(node, bnc, msg, is_fresh, cmp);
+  }
 }
 
 // append a msg to a nonleaf node's child buffer
@@ -1749,8 +1851,8 @@ static void ft_append_msg_to_child_buffer(const toku::comparator &cmp, FTNODE no
 }
 
 // This is only exported for tests.
-void toku_ft_append_to_child_buffer(const toku::comparator &cmp, FTNODE node, int childnum, enum ft_msg_type type, MSN msn, XIDS xids, bool is_fresh, const DBT *key, const DBT *val) {
-    ft_msg msg(key, val, type, msn, xids);
+void toku_ft_append_to_child_buffer(const toku::comparator &cmp, FTNODE node, int childnum, enum ft_msg_type_raw type, MSN msn, XIDS xids, bool is_fresh, const DBT *key, const DBT *val) {
+    ft_msg msg(key, val, {type, 1} , msn, xids);
     ft_append_msg_to_child_buffer(cmp, node, childnum, msg, is_fresh);
 }
 
@@ -1836,18 +1938,26 @@ void toku_ftnode_save_ct_pair(CACHEKEY UU(key), void *value_data, PAIR p) {
 }
 
 static void
-ft_nonleaf_msg_all(const toku::comparator &cmp, FTNODE node, const ft_msg &msg, bool is_fresh, size_t flow_deltas[])
+ft_nonleaf_msg_all(const toku::comparator &cmp, FTNODE node, ft_msg &msg, bool is_fresh, size_t flow_deltas[])
 // Effect: Put the message into a nonleaf node.  We put it into all children, possibly causing the children to become reactive.
 //  We don't do the splitting and merging.  That's up to the caller after doing all the puts it wants to do.
 //  The re_array[i] gets set to the reactivity of any modified child i.         (And there may be several such children.)
 {
-    for (int i = 0; i < node->n_children(); i++) {
-        ft_nonleaf_msg_once_to_child(cmp, node, i, msg, is_fresh, flow_deltas);
-    }
+
+  if (ft_msg_type_applies_all((enum ft_msg_type_raw) msg.type())) {
+    msg.ref_count_of_broadcast_msg() =
+        node->n_children(); // ref count of a broadcast msg
+    int32_t offset; 
+    node->broadcast_list().enqueue(msg, is_fresh, &offset);
+    return;
+  }
+  for (int i = 0; i < node->n_children(); i++) {
+    ft_nonleaf_msg_once_to_child(cmp, node, i, msg, is_fresh, flow_deltas);
+  }
 }
 
 static void
-ft_nonleaf_put_msg(const toku::comparator &cmp, FTNODE node, int target_childnum, const ft_msg &msg, bool is_fresh, size_t flow_deltas[])
+ft_nonleaf_put_msg(const toku::comparator &cmp, FTNODE node, int target_childnum, ft_msg &msg, bool is_fresh, size_t flow_deltas[])
 // Effect: Put the message into a nonleaf node.  We may put it into a child, possibly causing the child to become reactive.
 //  We don't do the splitting and merging.  That's up to the caller after doing all the puts it wants to do.
 //  The re_array[i] gets set to the reactivity of any modified child i.         (And there may be several such children.)
@@ -2025,7 +2135,7 @@ void toku_ftnode_put_msg(
     ft_update_func update_fun,
     FTNODE node,
     int target_childnum,
-    const ft_msg &msg,
+    ft_msg &msg,
     bool is_fresh,
     txn_gc_info* gc_info,
     size_t flow_deltas[],

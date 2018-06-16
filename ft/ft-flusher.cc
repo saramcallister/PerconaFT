@@ -79,11 +79,11 @@ static int
 find_heaviest_child(FTNODE node)
 {
     int max_child = 0;
-    uint64_t max_weight = toku_bnc_nbytesinbuf(BNC(node, 0)) + BP_WORKDONE(node, 0);
+    uint64_t max_weight = toku_bnc_nbytesinbuf(node, 0) + BP_WORKDONE(node, 0);
 
     invariant(node->n_children() > 0);
     for (int i = 1; i < node->n_children(); i++) {
-        uint64_t bytes_in_buf = toku_bnc_nbytesinbuf(BNC(node, i));
+        uint64_t bytes_in_buf = toku_bnc_nbytesinbuf(node, i);
         uint64_t workdone = BP_WORKDONE(node, i);
         if (workdone > 0) {
             invariant(bytes_in_buf > 0);
@@ -469,7 +469,7 @@ handle_split_of_child(
     toku_ftnode_assert_fully_in_memory(childa);
     toku_ftnode_assert_fully_in_memory(childb);
     NONLEAF_CHILDINFO old_bnc = BNC(node, childnum);
-    paranoid_invariant(toku_bnc_nbytesinbuf(old_bnc)==0);
+    paranoid_invariant(toku_bnc_nbytesinbuf(node, childnum)==0);
     WHEN_NOT_GCOV(
         if (toku_ft_debug_mode) {
             printf("%s:%d Child %d splitting on %s\n", __FILE__, __LINE__, childnum, (char*)splitk->data);
@@ -482,12 +482,16 @@ handle_split_of_child(
     node->dirty() = 1;
 
     XREALLOC_N(node->n_children()+1, (node->bp()));
+    XREALLOC_N(node->n_children()+1, (node->children_blocknum()));
     // Slide the children over.
     // suppose n_children is 10 and childnum is 5, meaning node->childnum[5] just got split
     // this moves (node->bp())[6] through (node->bp())[9] over to
     // (node->bp())[7] through (node->bp())[10]
-    for (int cnum=node->n_children(); cnum>childnum+1; cnum--) {
-        (node->bp())[cnum] = (node->bp())[cnum-1];
+    for (int cnum = node->n_children(); cnum > childnum + 1; cnum--) {
+      (node->bp())[cnum] = (node->bp())[cnum - 1];
+      if (node->height() > 0)
+        (node->children_blocknum())[cnum] =
+            (node->children_blocknum())[cnum - 1];
     }
     memset(&(node->bp())[childnum+1],0,sizeof((node->bp())[0]));
     node->n_children()++;
@@ -518,6 +522,8 @@ handle_split_of_child(
         new_bnc->flow[i] = old_bnc->flow[i] / 2;
         old_bnc->flow[i] = (old_bnc->flow[i] + 1) / 2;
     }
+    new_bnc->most_recent_flushed_broadcast_msg.msn =
+        old_bnc->most_recent_flushed_broadcast_msg.msn;
     set_BNC(node, childnum+1, new_bnc);
 
     // Insert the new split key , sliding the other keys over
@@ -648,6 +654,39 @@ move_leafentries(
     src_bn->data_buffer.split_klpairs(&dest_bn->data_buffer, lbi);
 }
 
+struct broadcast_msg_filter_for_split_node {
+  FTNODE node;
+  message_buffer *newbuf;
+
+  broadcast_msg_filter_for_split_node(FTNODE n, message_buffer *buf)
+      : node(n), newbuf(buf) {}
+  int operator()(ft_msg &msg, bool is_fresh) {
+    enum ft_msg_type_raw type = msg.type();
+    assert(ft_msg_type_applies_all(type));
+    int rc = 0;
+    for (int i = 0; i < node->n_children(); i++) {
+      NONLEAF_CHILDINFO bnc = BNC(node, i);
+      if (msg.msn().msn > bnc->most_recent_flushed_broadcast_msg.msn) {
+        rc++;
+      }
+    }
+    msg.ref_count_of_broadcast_msg() = rc;
+    if (rc > 0) {
+      newbuf->enqueue(msg, is_fresh, nullptr);
+    }
+    return 0;
+  }
+};
+
+static void update_broadcast_list_for_split(FTNODE node) {
+  message_buffer temp;
+  temp.create();
+  struct broadcast_msg_filter_for_split_node filter(node, &temp);
+  node->broadcast_list().iterate3(filter);
+  node->broadcast_list().destroy();
+  node->broadcast_list().clone(&temp);
+  temp.destroy();
+}
 static void ftnode_finalize_split(FTNODE node, FTNODE B, MSN max_msn_applied_to_node) {
 // Effect: Finalizes a split by updating some bits and dirtying both nodes
     toku_ftnode_assert_fully_in_memory(node);
@@ -663,6 +702,10 @@ static void ftnode_finalize_split(FTNODE node, FTNODE B, MSN max_msn_applied_to_
 
     node->dirty() = 1;
     B->dirty() = 1;
+    if (node->height() > 0) {
+      update_broadcast_list_for_split(node);
+      update_broadcast_list_for_split(B);
+    }
 }
 
 void
@@ -781,7 +824,7 @@ ftleaf_split(
             REALLOC_N(num_children_in_b,   B->bp());
             B->n_children() = num_children_in_b;
             for (int i = 0; i < num_children_in_b; i++) {
-                BP_BLOCKNUM(B,i).b = 0;
+                //BP_BLOCKNUM(B,i).b = 0;
                 BP_STATE(B,i) = PT_AVAIL;
                 BP_WORKDONE(B,i) = 0;
                 set_BLB(B, i, toku_create_empty_bn());
@@ -876,18 +919,21 @@ ft_nonleaf_split(
         /* The first n_children_in_a go into node a.
          * That means that the first n_children_in_a-1 keys go into node a.
          * The splitter key is key number n_children_in_a */
-        for (int i = n_children_in_a; i<old_n_children; i++) {
-            int targchild = i-n_children_in_a;
-            // TODO: Figure out better way to handle this
-            // the problem is that create_new_ftnode_with_dep_nodes for B creates
-            // all the data structures, whereas we really don't want it to fill
-            // in anything for the bp's.
-            // Now we have to go free what it just created so we can
-            // slide the bp over
-            destroy_nonleaf_childinfo(BNC(B, targchild));
-            // now move the bp over
-            (B->bp())[targchild] = (node->bp())[i];
-            memset(&(node->bp())[i], 0, sizeof((node->bp())[0]));
+        for (int i = n_children_in_a; i < old_n_children; i++) {
+          int targchild = i - n_children_in_a;
+          // TODO: Figure out better way to handle this
+          // the problem is that create_new_ftnode_with_dep_nodes for B creates
+          // all the data structures, whereas we really don't want it to fill
+          // in anything for the bp's.
+          // Now we have to go free what it just created so we can
+          // slide the bp over
+          destroy_nonleaf_childinfo(BNC(B, targchild));
+          // now move the bp over
+          (B->bp())[targchild] = (node->bp())[i];
+          memset(&(node->bp())[i], 0, sizeof((node->bp())[0]));
+          (B->children_blocknum())[targchild] = (node->children_blocknum())[i];
+          memset(&(node->children_blocknum())[i], 0,
+                 sizeof((node->children_blocknum())[0]));
         }
 
         // the split key for our parent is the rightmost pivot key in node
@@ -897,6 +943,10 @@ ft_nonleaf_split(
 
         node->n_children() = n_children_in_a;
         REALLOC_N(node->n_children(), (node->bp()));
+        REALLOC_N(node->n_children(), (node->children_blocknum()));
+
+	//broadcast list, will be fixed in ftnode_finalize_split
+	B->broadcast_list().clone(&node->broadcast_list());
     }
 
     ftnode_finalize_split(node, B, max_msn_applied_to_node);
@@ -922,7 +972,7 @@ ft_split_child(
     struct flusher_advice *fa)
 {
     paranoid_invariant(node->height()>0);
-    paranoid_invariant(toku_bnc_nbytesinbuf(BNC(node, childnum))==0); // require that the buffer for this child is empty
+    paranoid_invariant(toku_bnc_nbytesinbuf(node, childnum)==0); // require that the buffer for this child is empty
     FTNODE nodea, nodeb;
     DBT splitk;
 
@@ -982,6 +1032,50 @@ static void bring_node_fully_into_memory(FTNODE node, FT ft) {
     }
 }
 
+struct applicable_broadcast_msg_fetcher {
+  message_buffer *broadcast_list;
+  MSN most_recent_flushed_msn;
+  message_buffer *temp;
+  int *n_dropped_to_zero;
+  MSN * update_most_recent_msn;
+  applicable_broadcast_msg_fetcher(message_buffer *msg_buf1, MSN msn1,
+                                   message_buffer *msg_buf2, int *count, MSN * msn2)
+      : broadcast_list(msg_buf1), most_recent_flushed_msn(msn1), temp(msg_buf2),
+        n_dropped_to_zero(count), update_most_recent_msn(msn2) {
+    *n_dropped_to_zero = 0;
+    *update_most_recent_msn = most_recent_flushed_msn;
+  }
+  int operator()(const ft_msg &msg, bool is_fresh, int32_t offset) {
+    enum ft_msg_type_raw type = msg.type();
+    assert(ft_msg_type_applies_all(type));
+    if (msg.msn().msn > most_recent_flushed_msn.msn) {
+      int rc;
+      broadcast_list->get_broadcast_message_ref_count(offset, &rc);
+      rc--;
+      broadcast_list->set_broadcast_message_ref_count(offset, rc);
+      if (rc == 0)
+        (*n_dropped_to_zero)++;
+      temp->enqueue(msg, is_fresh, nullptr);
+      *update_most_recent_msn = msg.msn();
+    }
+    return 0;
+  }
+};
+
+static void dec_ref_and_fetch_applicable_broadcast_msgs(
+    FTNODE node, MSN most_recent_flushed_broadcast_msn,
+    message_buffer *buffer, MSN * updated_most_recent) {
+  int n_dropped_to_zero;
+  struct applicable_broadcast_msg_fetcher fetcher(
+      &node->broadcast_list(), most_recent_flushed_broadcast_msn, buffer,
+      &n_dropped_to_zero, updated_most_recent);
+  node->broadcast_list().iterate2(fetcher);
+  if (n_dropped_to_zero > 0) {
+    // remove broadcast msgs whose RC=0
+    node->broadcast_list().dequeue(n_dropped_to_zero);
+  }
+}
+
 static void
 flush_this_child(
     FT ft,
@@ -1008,7 +1102,16 @@ flush_this_child(
     BP_WORKDONE(node, childnum) = 0;  // this buffer is drained, no work has been done by its contents
     NONLEAF_CHILDINFO bnc = BNC(node, childnum);
     set_BNC(node, childnum, toku_create_empty_nl());
-
+    // broadcast msgs
+    message_buffer broadcasts;
+    broadcasts.create();
+    MSN updated_recent_msn;
+    dec_ref_and_fetch_applicable_broadcast_msgs(
+        node, bnc->most_recent_flushed_broadcast_msg, &broadcasts, &updated_recent_msn);
+    bnc->msg_buffer.merge_with(broadcasts);
+    broadcasts.destroy();
+    NONLEAF_CHILDINFO new_bnc = BNC(node, childnum);
+    new_bnc->most_recent_flushed_broadcast_msg = updated_recent_msn; 
     // now we have a bnc to flush to the child. pass down the parent's
     // oldest known referenced xid as we flush down to the child.
     toku_bnc_flush_to_child(ft, bnc, child, node->oldest_referenced_xid_known());
@@ -1117,8 +1220,8 @@ maybe_merge_pinned_leaf_nodes(
 //	   or distribute the leafentries evenly between a and b, and set *did_rebalance = true.
 //	   (If a and be are already evenly distributed, we may do nothing.)
 {
-    unsigned int sizea = toku_serialize_ftnode_size(a);
-    unsigned int sizeb = toku_serialize_ftnode_size(b);
+    unsigned int sizea = toku_serialize_ftnode_weighted_size(a);
+    unsigned int sizeb = toku_serialize_ftnode_weighted_size(b);
     uint32_t num_leafentries = toku_ftnode_leaf_num_entries(a) + toku_ftnode_leaf_num_entries(b);
     if (num_leafentries > 1 && (sizea + sizeb)*4 > (nodesize*3)) {
         // the combined size is more than 3/4 of a node, so don't merge them.
@@ -1141,6 +1244,9 @@ maybe_merge_pinned_leaf_nodes(
     }
 }
 
+static void update_new_node_for_merge(FTNODE a, FTNODE b) {
+  a->broadcast_list().merge_with(b->broadcast_list());
+}
 static void
 maybe_merge_pinned_nonleaf_nodes(
     const DBT *parent_splitk,
@@ -1161,6 +1267,11 @@ maybe_merge_pinned_nonleaf_nodes(
     memcpy(a->bp() + old_n_children, b->bp(), b->n_children() * sizeof((b->bp())[0]));
     memset(b->bp(), 0, b->n_children() * sizeof((b->bp())[0]));
 
+    XREALLOC_N(new_n_children, a->children_blocknum());
+    memcpy(a->children_blocknum() + old_n_children, b->children_blocknum(), b->n_children() * sizeof((b->children_blocknum())[0]));
+    memset(b->children_blocknum(), 0, b->n_children() * sizeof((b->children_blocknum())[0]));
+
+    update_new_node_for_merge(a, b);
     a->pivotkeys().insert_at(parent_splitk, old_n_children - 1);
     a->pivotkeys().append(b->pivotkeys());
     a->n_children() = new_n_children;
@@ -1289,10 +1400,10 @@ ft_merge_child(
         toku_pin_ftnode_with_dep_nodes(ft, BP_BLOCKNUM(node, childnumb), childfullhash, &bfe, PL_WRITE_EXPENSIVE, 2, dep_nodes, &childb, true);
     }
 
-    if (toku_bnc_n_entries(BNC(node,childnuma))>0) {
+    if (node->broadcast_list().num_entries() > 0 || toku_bnc_n_entries(BNC(node,childnuma))>0) {
         flush_this_child(ft, node, childa, childnuma, fa);
     }
-    if (toku_bnc_n_entries(BNC(node,childnumb))>0) {
+    if (node->broadcast_list().num_entries() > 0 || toku_bnc_n_entries(BNC(node,childnumb))>0) {
         flush_this_child(ft, node, childb, childnumb, fa);
     }
 
@@ -1323,6 +1434,12 @@ ft_merge_child(
                     &(node->bp())[childnumb+1],
                     (node->n_children()-childnumb)*sizeof((node->bp())[0]));
             REALLOC_N(node->n_children(), (node->bp()));
+
+            memmove(&(node->children_blocknum())[childnumb],
+                    &(node->children_blocknum())[childnumb+1],
+                    (node->n_children()-childnumb)*sizeof((node->children_blocknum())[0]));
+            REALLOC_N(node->n_children(), (node->children_blocknum()));
+ 
             node->pivotkeys().delete_at(childnuma);
 
             // Handle a merge of the rightmost leaf node.
@@ -1437,17 +1554,29 @@ void toku_ft_flush_some_child(FT ft, FTNODE parent, struct flusher_advice *fa)
     paranoid_invariant(child->blocknum().b!=0);
 
     // only do the following work if there is a flush to perform
-    if (toku_bnc_n_entries(BNC(parent, childnum)) > 0 || parent->height() == 1) {
-        if (!parent->dirty()) {
-            dirtied++;
-            parent->dirty() = 1;
-        }
-        // detach buffer
-        BP_WORKDONE(parent, childnum) = 0;  // this buffer is drained, no work has been done by its contents
-        bnc = BNC(parent, childnum);
-        NONLEAF_CHILDINFO new_bnc = toku_create_empty_nl();
-        memcpy(new_bnc->flow, bnc->flow, sizeof bnc->flow);
-        set_BNC(parent, childnum, new_bnc);
+    if (parent->broadcast_list().num_entries() > 0 ||
+        toku_bnc_n_entries(BNC(parent, childnum)) > 0 ||
+        parent->height() == 1) {
+      if (!parent->dirty()) {
+        dirtied++;
+        parent->dirty() = 1;
+      }
+      // detach buffer
+      BP_WORKDONE(parent, childnum) =
+          0; // this buffer is drained, no work has been done by its contents
+      bnc = BNC(parent, childnum);
+      NONLEAF_CHILDINFO new_bnc = toku_create_empty_nl();
+      memcpy(new_bnc->flow, bnc->flow, sizeof bnc->flow);
+      set_BNC(parent, childnum, new_bnc);
+      // broadcast msgs
+      message_buffer broadcasts;
+      broadcasts.create();
+      MSN updated_recent_msn;
+      dec_ref_and_fetch_applicable_broadcast_msgs(parent, bnc->most_recent_flushed_broadcast_msg, &broadcasts, &updated_recent_msn);
+      new_bnc = BNC(parent, childnum);
+      new_bnc->most_recent_flushed_broadcast_msg = updated_recent_msn;
+      bnc->msg_buffer.merge_with(broadcasts);
+      broadcasts.destroy();
     }
 
     //
@@ -1565,6 +1694,7 @@ void toku_bnc_flush_to_child(FT ft, NONLEAF_CHILDINFO bnc, FTNODE child, TXNID p
                         oldest_referenced_xid_for_simple_gc,                    
                         child->oldest_referenced_xid_known(),
                         true);
+    MSN max_flushed_broadcast_msn;
     struct flush_msg_fn {
         FT ft;
         FTNODE child;
@@ -1574,12 +1704,13 @@ void toku_bnc_flush_to_child(FT ft, NONLEAF_CHILDINFO bnc, FTNODE child, TXNID p
         STAT64INFO_S stats_delta;
         int64_t logical_rows_delta = 0;
         size_t remaining_memsize = bnc->msg_buffer.buffer_size_in_use();
-
-        flush_msg_fn(FT t, FTNODE n, NONLEAF_CHILDINFO nl, txn_gc_info *g) :
-            ft(t), child(n), bnc(nl), gc_info(g), remaining_memsize(bnc->msg_buffer.buffer_size_in_use()) {
+	MSN * max_broadcast_msn;
+        flush_msg_fn(FT t, FTNODE n, NONLEAF_CHILDINFO nl, txn_gc_info *g, MSN * max) :
+            ft(t), child(n), bnc(nl), gc_info(g), remaining_memsize(bnc->msg_buffer.buffer_size_in_use()), max_broadcast_msn(max) {
             stats_delta = { 0, 0 };
+	    max_broadcast_msn->msn = bnc->most_recent_flushed_broadcast_msg.msn;
         }
-        int operator()(const ft_msg &msg, bool is_fresh) {
+        int operator()(ft_msg &msg, bool is_fresh) {
             size_t flow_deltas[] = { 0, 0 };
             size_t memsize_in_buffer = message_buffer::msg_memsize_in_buffer(msg);
             if (remaining_memsize <= bnc->flow[0]) {
@@ -1591,6 +1722,11 @@ void toku_bnc_flush_to_child(FT ft, NONLEAF_CHILDINFO bnc, FTNODE child, TXNID p
                 // end of the message buffer
                 flow_deltas[1] = memsize_in_buffer;
             }
+            if (ft_msg_type_applies_all(msg.type()) &&
+                msg.msn().msn > max_broadcast_msn->msn) {
+              max_broadcast_msn->msn = msg.msn().msn;
+            }
+
             toku_ftnode_put_msg(
                 ft->cmp,
                 ft->update_fun,
@@ -1605,9 +1741,9 @@ void toku_bnc_flush_to_child(FT ft, NONLEAF_CHILDINFO bnc, FTNODE child, TXNID p
             remaining_memsize -= memsize_in_buffer;
             return 0;
         }
-    } flush_fn(ft, child, bnc, &gc_info);
-    bnc->msg_buffer.iterate(flush_fn);
-
+    } flush_fn(ft, child, bnc, &gc_info, &max_flushed_broadcast_msn);
+    bnc->msg_buffer.iterate3(flush_fn);
+    //bnc->most_recent_flushed_broadcast_msg.msn = max_flushed_broadcast_msn.msn;
     child->oldest_referenced_xid_known() = parent_oldest_referenced_xid_known;
 
     invariant(flush_fn.remaining_memsize == 0);
@@ -1634,7 +1770,7 @@ update_cleaner_status(
         FL_STATUS_VAL(FT_FLUSHER_CLEANER_HGT1_NODES)++;
     }
 
-    unsigned int nbytesinbuf = toku_bnc_nbytesinbuf(BNC(node, childnum));
+    unsigned int nbytesinbuf = toku_bnc_nbytesinbuf(node, childnum);
     if (nbytesinbuf == 0) {
         FL_STATUS_VAL(FT_FLUSHER_CLEANER_EMPTY_NODES)++;
     } else {
@@ -1748,7 +1884,7 @@ toku_ftnode_cleaner_callback(
     update_cleaner_status(node, childnum);
 
     // Either toku_ft_flush_some_child will unlock the node, or we do it here.
-    if (toku_bnc_nbytesinbuf(BNC(node, childnum)) > 0) {
+    if (toku_bnc_nbytesinbuf(node, childnum) > 0) {
         struct flusher_advice fa;
         struct flush_status_update_extra fste;
         ct_flusher_advice_init(&fa, &fste, ft->h->nodesize);
@@ -1898,8 +2034,17 @@ void toku_ft_flush_node_on_background_thread(FT ft, FTNODE parent)
             NONLEAF_CHILDINFO new_bnc = toku_create_empty_nl();
             memcpy(new_bnc->flow, bnc->flow, sizeof bnc->flow);
             set_BNC(parent, childnum, new_bnc);
+            // broadcast msgs
+            message_buffer broadcasts;
+            broadcasts.create();
+            MSN updated_recent_msn;
+            dec_ref_and_fetch_applicable_broadcast_msgs(
+                parent, bnc->most_recent_flushed_broadcast_msg, &broadcasts, &updated_recent_msn);
+            new_bnc = BNC(parent, childnum);
+            new_bnc->most_recent_flushed_broadcast_msg = updated_recent_msn;
+            bnc->msg_buffer.merge_with(broadcasts);
+            broadcasts.destroy();
 
-            //
             // at this point, the buffer has been detached from the parent
             // and a new empty buffer has been placed in its stead
             // so, because we know for sure the child is not

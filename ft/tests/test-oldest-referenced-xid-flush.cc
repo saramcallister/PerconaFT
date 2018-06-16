@@ -144,7 +144,7 @@ static void test_oldest_referenced_xid_gets_propagated(void) {
     assert(node->height() == 2);
     assert(node->n_children() == 1);
     assert(BP_BLOCKNUM(node, 0).b == child_nonleaf_blocknum.b);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) > 0);
     assert(node->oldest_referenced_xid_known() == TXNID_NONE);
 
     // set the root's oldest referenced xid to something special

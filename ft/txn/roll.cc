@@ -291,7 +291,7 @@ int find_ft_from_filenum (const FT &ft, const FILENUM &filenum) {
 // (Example use is for schema change committed with txn that inserted cmdupdatebroadcast message.)
 // The oplsn argument is ZERO_LSN for normal operation.  When this function is called for recovery, it has the LSN of
 // the operation (insert, delete, update, etc).
-static int do_insertion (enum ft_msg_type type, FILENUM filenum, BYTESTRING key, BYTESTRING *data, TOKUTXN txn, LSN oplsn,
+static int do_insertion (enum ft_msg_type_raw type, FILENUM filenum, BYTESTRING key, BYTESTRING *data, TOKUTXN txn, LSN oplsn,
                          bool reset_root_xid_that_created) {
     int r = 0;
     //printf("%s:%d committing insert %s %s\n", __FILE__, __LINE__, key.data, data.data);
@@ -320,7 +320,7 @@ static int do_insertion (enum ft_msg_type type, FILENUM filenum, BYTESTRING key,
                                         toku_init_dbt(&key_dbt);
         const DBT *vdbt = data ? toku_fill_dbt(&data_dbt, data->data, data->len) :
                                  toku_init_dbt(&data_dbt);
-        ft_msg msg(kdbt, vdbt, type, ZERO_MSN, xids);
+        ft_msg msg(kdbt, vdbt, {type, 1}, ZERO_MSN, xids);
 
         TXN_MANAGER txn_manager = toku_logger_get_txn_manager(txn->logger);
         txn_manager_state txn_state_for_gc(txn_manager);
@@ -395,7 +395,7 @@ toku_commit_cmdupdatebroadcast(FILENUM    filenum,
     // if is_resetting_op, reset root_xid_that_created in
     // relevant ft.
     bool reset_root_xid_that_created = (is_resetting_op ? true : false);
-    const enum ft_msg_type msg_type = (is_resetting_op
+    const enum ft_msg_type_raw msg_type = (is_resetting_op
                                         ? FT_COMMIT_BROADCAST_ALL
                                         : FT_COMMIT_BROADCAST_TXN);
     BYTESTRING nullkey = { 0, NULL };

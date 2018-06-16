@@ -141,9 +141,9 @@ doit (void) {
         );
     assert(node->height() == 1);
     assert(node->n_children() == 3);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 1)) > 0);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 2)) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 1) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 2) > 0);
     toku_unpin_ftnode(t->ft, node);
 
     // now let's run a hot optimize, that should only flush the middle buffer
@@ -170,9 +170,9 @@ doit (void) {
         );
     assert(node->height() == 1);
     assert(node->n_children() == 3);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 1)) == 0);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 2)) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 1) == 0);
+    assert(toku_bnc_nbytesinbuf(node, 2) > 0);
     toku_unpin_ftnode(t->ft, node);
 
     r = toku_close_ft_handle_nolsn(t, 0);    assert(r==0);

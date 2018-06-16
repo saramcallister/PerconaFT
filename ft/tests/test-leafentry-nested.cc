@@ -522,19 +522,19 @@ test_le_empty_apply(void) {
                     ULE_S ule_expected = ule_committed_delete;
 
                     {
-                        ft_msg msg(&key, &val, FT_COMMIT_ANY, ZERO_MSN, msg_xids);
+                        ft_msg msg(&key, &val, {FT_COMMIT_ANY, 1}, ZERO_MSN, msg_xids);
                         test_le_apply(&ule_initial, msg, &ule_expected);
                     }
                     {
-                        ft_msg msg(&key, &val, FT_COMMIT_BROADCAST_TXN, ZERO_MSN, msg_xids);
+                        ft_msg msg(&key, &val, {FT_COMMIT_BROADCAST_TXN, -1}, ZERO_MSN, msg_xids);
                         test_le_apply(&ule_initial, msg, &ule_expected);
                     }
                     {
-                        ft_msg msg(&key, &val, FT_ABORT_ANY, ZERO_MSN, msg_xids);
+                        ft_msg msg(&key, &val, {FT_ABORT_ANY, 1}, ZERO_MSN, msg_xids);
                         test_le_apply(&ule_initial, msg, &ule_expected);
                     }
                     {
-                        ft_msg msg(&key, &val, FT_ABORT_BROADCAST_TXN, ZERO_MSN, msg_xids);
+                        ft_msg msg(&key, &val, {FT_ABORT_BROADCAST_TXN, -1}, ZERO_MSN, msg_xids);
                         test_le_apply(&ule_initial, msg, &ule_expected);
                     }
                 }
@@ -542,17 +542,17 @@ test_le_empty_apply(void) {
                     //delete of an empty le is an empty le
                     ULE_S ule_expected = ule_committed_delete;
 
-                    ft_msg msg(&key, &val, FT_DELETE_ANY, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_DELETE_ANY, 1}, ZERO_MSN, msg_xids);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
                 {
-                    ft_msg msg(&key, &val, FT_INSERT, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_INSERT, 1}, ZERO_MSN, msg_xids);
                     ULE_S ule_expected;
                     generate_provpair_for(&ule_expected, msg);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
                 {
-                    ft_msg msg(&key, &val, FT_INSERT_NO_OVERWRITE, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_INSERT_NO_OVERWRITE, 1}, ZERO_MSN, msg_xids);
                     ULE_S ule_expected;
                     generate_provpair_for(&ule_expected, msg);
                     test_le_apply(&ule_initial, msg, &ule_expected);
@@ -639,25 +639,25 @@ test_le_committed_apply(void) {
                 //Commit/abort will not change a committed le
                 ULE_S ule_expected = ule_initial;
                 {
-                    ft_msg msg(&key, &val, FT_COMMIT_ANY, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_COMMIT_ANY, 1}, ZERO_MSN, msg_xids);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
                 {
-                    ft_msg msg(&key, &val, FT_COMMIT_BROADCAST_TXN, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_COMMIT_BROADCAST_TXN, -1}, ZERO_MSN, msg_xids);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
                 {
-                    ft_msg msg(&key, &val, FT_ABORT_ANY, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_ABORT_ANY, 1}, ZERO_MSN, msg_xids);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
                 {
-                    ft_msg msg(&key, &val, FT_ABORT_BROADCAST_TXN, ZERO_MSN, msg_xids);
+                    ft_msg msg(&key, &val, {FT_ABORT_BROADCAST_TXN, -1}, ZERO_MSN, msg_xids);
                     test_le_apply(&ule_initial, msg, &ule_expected);
                 }
             }
 
             {
-                ft_msg msg(&key, &val, FT_DELETE_ANY, ZERO_MSN, msg_xids);
+                ft_msg msg(&key, &val, {FT_DELETE_ANY, 1}, ZERO_MSN, msg_xids);
                 ULE_S ule_expected;
                 ule_expected.uxrs = ule_expected.uxrs_static;
                 generate_provdel_for(&ule_expected, msg);
@@ -670,7 +670,7 @@ test_le_committed_apply(void) {
                 fillrandom(valbuf2, valsize2);
                 DBT val2;
                 toku_fill_dbt(&val2, valbuf2, valsize2);
-                ft_msg msg(&key, &val2, FT_INSERT, ZERO_MSN, msg_xids);
+                ft_msg msg(&key, &val2, {FT_INSERT, 1}, ZERO_MSN, msg_xids);
                 ULE_S ule_expected;
                 ule_expected.uxrs = ule_expected.uxrs_static;
                 generate_both_for(&ule_expected, &val, msg);
@@ -684,7 +684,7 @@ test_le_committed_apply(void) {
                 fillrandom(valbuf2, valsize2);
                 DBT val2;
                 toku_fill_dbt(&val2, valbuf2, valsize2);
-                ft_msg msg(&key, &val2, FT_INSERT_NO_OVERWRITE, ZERO_MSN, msg_xids);
+                ft_msg msg(&key, &val2, {FT_INSERT_NO_OVERWRITE, 1}, ZERO_MSN, msg_xids);
                 test_le_apply(&ule_initial, msg, &ule_expected);
             }
         }
@@ -821,7 +821,7 @@ static void test_le_optimize(void) {
     XIDS msg_xids; 
     int r = toku_xids_create_child(root_xids, &msg_xids, optimize_txnid);
     assert(r==0);
-    ft_msg msg(&key, &val, FT_OPTIMIZE, ZERO_MSN, msg_xids);
+    ft_msg msg(&key, &val, {FT_OPTIMIZE, -1}, ZERO_MSN, msg_xids);
 
     //
     // create the key

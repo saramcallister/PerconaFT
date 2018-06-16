@@ -339,11 +339,13 @@ static void test_prefetching(void) {
     sn.n_children() = 3;
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
+    sn.broadcast_list().create();
+    XMALLOC_N(sn.n_children(), sn.children_blocknum());
+    XMALLOC_N(sn.n_children(), sn.bp());
 
     uint64_t key1 = 100;
     uint64_t key2 = 200;
 
-    MALLOC_N(sn.n_children(), sn.bp());
     DBT pivotkeys[2];
     toku_fill_dbt(&pivotkeys[0], &key1, sizeof(key1));
     toku_fill_dbt(&pivotkeys[1], &key2, sizeof(key2));

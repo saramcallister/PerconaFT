@@ -195,7 +195,7 @@ struct ftnode_header {
   TXNID _oldest_referenced_xid_known;
   struct ctpair *_ct_pair;
   //broadcast msgs stored in header, appliable to all children
-  off_omt_t _broadcast_list;
+  message_buffer _broadcast_msgs;
   //bloom filter
   //bloom_filter filter;
 };
@@ -279,7 +279,7 @@ public:
   struct ctpair *&ct_pair() {
     return _header._ct_pair;
   }
-  off_omt_t &broadcast_list() { return _header._broadcast_list; }
+  message_buffer &broadcast_list() { return _header._broadcast_msgs; }
 };
 typedef struct ftnode *FTNODE;
 
@@ -319,6 +319,7 @@ typedef toku::omt<int32_t, int32_t, true> marked_off_omt_t;
 
 // data of an available partition of a nonleaf ftnode
 struct ftnode_nonleaf_childinfo {
+    MSN most_recent_flushed_broadcast_msg;
     message_buffer msg_buffer;
 //    off_omt_t broadcast_list;
     marked_off_omt_t fresh_message_tree;
@@ -472,13 +473,13 @@ int toku_msg_leafval_heaviside(
     DBT const &kdbt,
     const struct toku_msg_leafval_heaviside_extra &be);
 
-unsigned int toku_bnc_nbytesinbuf(NONLEAF_CHILDINFO bnc);
+unsigned int toku_bnc_nbytesinbuf(FTNODE node, int childnum);
 int toku_bnc_n_entries(NONLEAF_CHILDINFO bnc);
 long toku_bnc_memory_size(NONLEAF_CHILDINFO bnc);
 long toku_bnc_memory_used(NONLEAF_CHILDINFO bnc);
 void toku_bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const void *key,
                          uint32_t keylen, const void *data, uint32_t datalen,
-                         enum ft_msg_type type, MSN msn, XIDS xids,
+                         enum ft_msg_type_raw type, MSN msn, XIDS xids,
                          bool is_fresh, const toku::comparator &cmp);
 void toku_bnc_empty(NONLEAF_CHILDINFO bnc);
 void toku_bnc_flush_to_child(FT ft,
@@ -529,7 +530,7 @@ void toku_ftnode_put_msg(const toku::comparator &cmp,
                          ft_update_func update_fun,
                          FTNODE node,
                          int target_childnum,
-                         const ft_msg &msg,
+                         ft_msg &msg,
                          bool is_fresh,
                          txn_gc_info *gc_info,
                          size_t flow_deltas[],

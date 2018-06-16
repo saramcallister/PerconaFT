@@ -192,7 +192,7 @@ doit (bool after_child_pin) {
         );
     assert(node->height() == 1);
     assert(node->n_children() == 1);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) > 0);
 
     // do the flush
     toku_ft_flush_some_child(t->ft, node, &fa);
@@ -210,7 +210,7 @@ doit (bool after_child_pin) {
         );
     assert(node->height() == 1);
     assert(node->n_children() == 1);
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) == 0);
     toku_unpin_ftnode(t->ft, node);
 
     void *ret;
@@ -248,10 +248,10 @@ doit (bool after_child_pin) {
     assert(!node->dirty());
     assert(node->n_children() == 1);
     if (after_child_pin) {
-        assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
+        assert(toku_bnc_nbytesinbuf(node, 0) == 0);
     }
     else {
-        assert(toku_bnc_nbytesinbuf(BNC(node, 0)) > 0);
+        assert(toku_bnc_nbytesinbuf(node, 0) > 0);
     }
     toku_unpin_ftnode(c_ft->ft, node);
 

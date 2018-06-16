@@ -60,7 +60,7 @@ static const MSN MIN_MSN = { .msn = 1ULL << 62 };
 static const MSN MAX_MSN = { .msn = UINT64_MAX };
 
 /* tree command types */
-enum ft_msg_type {
+enum ft_msg_type_raw {
     FT_NONE = 0,
     FT_INSERT = 1,
     FT_DELETE_ANY = 2,  // Delete any matching key.  This used to be called FT_DELETE.
@@ -79,18 +79,50 @@ enum ft_msg_type {
     FT_UPDATE_BROADCAST_ALL = 15
 };
 
+typedef struct ft_msg_type {
+   enum ft_msg_type_raw type;
+   int ref_count; //only makes sense for a broadcast message 
+} ft_msg_type;
+
+static inline bool ft_msg_type_applies_once(enum ft_msg_type_raw type) {
+  bool ret_val;
+  switch (type) {
+  case FT_INSERT_NO_OVERWRITE:
+  case FT_INSERT:
+  case FT_DELETE_ANY:
+  case FT_ABORT_ANY:
+  case FT_COMMIT_ANY:
+  case FT_UPDATE:
+    ret_val = true;
+    break;
+  case FT_COMMIT_BROADCAST_ALL:
+  case FT_COMMIT_BROADCAST_TXN:
+  case FT_ABORT_BROADCAST_TXN:
+  case FT_OPTIMIZE:
+  case FT_OPTIMIZE_FOR_UPGRADE:
+  case FT_UPDATE_BROADCAST_ALL:
+  case FT_NONE:
+    ret_val = false;
+    break;
+  default:
+    assert(false);
+  }
+  return ret_val;
+}
+
 static inline bool
-ft_msg_type_applies_once(enum ft_msg_type type)
+ft_msg_type_applies_all(enum ft_msg_type_raw type)
 {
     bool ret_val;
     switch (type) {
+    case FT_NONE:
     case FT_INSERT_NO_OVERWRITE:
     case FT_INSERT:
     case FT_DELETE_ANY:
     case FT_ABORT_ANY:
     case FT_COMMIT_ANY:
     case FT_UPDATE:
-        ret_val = true;
+        ret_val = false;
         break;
     case FT_COMMIT_BROADCAST_ALL:
     case FT_COMMIT_BROADCAST_TXN:
@@ -98,54 +130,28 @@ ft_msg_type_applies_once(enum ft_msg_type type)
     case FT_OPTIMIZE:
     case FT_OPTIMIZE_FOR_UPGRADE:
     case FT_UPDATE_BROADCAST_ALL:
-    case FT_NONE:
-        ret_val = false;
-        break;
-    default:
-        assert(false);
-    }
-    return ret_val;
-}
-
-static inline bool
-ft_msg_type_applies_all(enum ft_msg_type type)
-{
-    bool ret_val;
-    switch (type) {
-    case FT_NONE:
-    case FT_INSERT_NO_OVERWRITE:
-    case FT_INSERT:
-    case FT_DELETE_ANY:
-    case FT_ABORT_ANY:
-    case FT_COMMIT_ANY:
-    case FT_UPDATE:
-        ret_val = false;
-        break;
-    case FT_COMMIT_BROADCAST_ALL:
-    case FT_COMMIT_BROADCAST_TXN:
-    case FT_ABORT_BROADCAST_TXN:
-    case FT_OPTIMIZE:
-    case FT_OPTIMIZE_FOR_UPGRADE:
-    case FT_UPDATE_BROADCAST_ALL:
         ret_val = true;
         break;
     default:
-        assert(false);
+	ret_val = false;
+//        assert(false);
     }
     return ret_val;
 }
 
 static inline bool
-ft_msg_type_does_nothing(enum ft_msg_type type)
+ft_msg_type_does_nothing(enum ft_msg_type_raw type)
 {
     return (type == FT_NONE);
 }
 
 class ft_msg {
 public:
-    ft_msg(const DBT *key, const DBT *val, enum ft_msg_type t, MSN m, XIDS x);
+    ft_msg(const DBT *key, const DBT *val, ft_msg_type t, MSN m, XIDS x);
 
-    enum ft_msg_type type() const;
+    enum ft_msg_type_raw type() const;
+    ft_msg_type type_all() const;
+    int & ref_count_of_broadcast_msg();
 
     MSN msn() const;
 
@@ -170,7 +176,7 @@ public:
 private:
     const DBT _key;
     const DBT _val;
-    enum ft_msg_type _type;
+    ft_msg_type _type;
     MSN _msn;
     XIDS _xids;
 };

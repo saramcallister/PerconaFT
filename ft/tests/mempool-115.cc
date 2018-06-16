@@ -104,6 +104,7 @@ public:
         sn.n_children() = 2;
         sn.dirty() = 1;
         sn.oldest_referenced_xid_known() = TXNID_NONE;
+        sn.broadcast_list().create();
         MALLOC_N(sn.n_children(), sn.bp());
         DBT pivotkey;
         sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "b", 2), 1);

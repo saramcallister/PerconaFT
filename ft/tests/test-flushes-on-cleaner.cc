@@ -297,7 +297,7 @@ doit (bool keep_other_bn_in_memory) {
         true
         );
     // check that buffers are empty
-    assert(toku_bnc_nbytesinbuf(BNC(node, 0)) == 0);
+    assert(toku_bnc_nbytesinbuf(node, 0) == 0);
     toku_unpin_ftnode(ft->ft, node);
     
     //

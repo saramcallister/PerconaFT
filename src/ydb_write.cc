@@ -204,7 +204,7 @@ static int
 db_put(DB *db, DB_TXN *txn, DBT *key, DBT *val, int flags, bool do_log) {
     int r = 0;
     bool unique = false;
-    enum ft_msg_type type = FT_INSERT;
+    enum ft_msg_type_raw type = FT_INSERT;
     if (flags == DB_NOOVERWRITE) {
         unique = true;
     } else if (flags == DB_NOOVERWRITE_NO_ERROR) {

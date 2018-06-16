@@ -379,7 +379,7 @@ static void  countMessagesInFT(int fd, BLOCKNUM blocknum, FT ft,NMC *msgs[]){
             cout <<(n->bp())[i].ptr.tag;
         }
         auto dump_fn=[&](const ft_msg &msg, bool UU(is_fresh)) {
-            enum ft_msg_type type = (enum ft_msg_type) msg.type();
+            enum ft_msg_type_raw type = (enum ft_msg_type_raw) msg.type();
             last->count[type]++;
             last->clean=1;
             return 0;
@@ -451,7 +451,7 @@ static void dump_node(int fd, BLOCKNUM blocknum, FT ft) {
         if (n->height() > 0) {
             printf("%" PRId64 "\n", BP_BLOCKNUM(n, i).b);
             NONLEAF_CHILDINFO bnc = BNC(n, i);
-            unsigned int n_bytes = toku_bnc_nbytesinbuf(bnc);
+            unsigned int n_bytes = toku_bnc_nbytesinbuf(n, i);
             int n_entries = toku_bnc_n_entries(bnc);
             if (n_bytes > 0 || n_entries > 0) {
                 printf("   buffer contains %u bytes (%d items)\n", n_bytes, n_entries);
@@ -459,7 +459,7 @@ static void dump_node(int fd, BLOCKNUM blocknum, FT ft) {
             if (do_dump_data) {
                 struct dump_data_fn {
                     int operator()(const ft_msg &msg, bool UU(is_fresh)) {
-                        enum ft_msg_type type = (enum ft_msg_type) msg.type();
+                        enum ft_msg_type_raw type = (enum ft_msg_type_raw) msg.type();
                         MSN msn = msg.msn();
                         XIDS xids = msg.xids();
                         const void *key = msg.kdbt()->data;
@@ -482,6 +482,7 @@ static void dump_node(int fd, BLOCKNUM blocknum, FT ft) {
                             case FT_OPTIMIZE_FOR_UPGRADE: printf("OPTIMIZE_FOR_UPGRADE"); goto ok;
                             case FT_UPDATE:   printf("UPDATE"); goto ok;
                             case FT_UPDATE_BROADCAST_ALL: printf("UPDATE_BROADCAST_ALL"); goto ok;
+			    default: break;
                         }
                         printf("HUH?");
 ok:
@@ -629,7 +630,7 @@ static int summary_helper(BLOCKNUM b, int64_t size, int64_t UU(address), void *e
 	    //printf("  child %d: ", i);
 	    if (n->height() > 0) {
 		NONLEAF_CHILDINFO bnc = BNC(n, i);
-		unsigned int n_bytes = toku_bnc_nbytesinbuf(bnc);
+		unsigned int n_bytes = toku_bnc_nbytesinbuf(n, i);
 		int n_entries = toku_bnc_n_entries(bnc);
 		//if (n_bytes > 0 || n_entries > 0) {
 		//    printf("   buffer contains %u bytes (%d items)\n", n_bytes, n_entries);

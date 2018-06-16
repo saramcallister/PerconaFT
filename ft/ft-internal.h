@@ -358,7 +358,7 @@ void toku_ft_nonleaf_append_child(FTNODE node, FTNODE child, const DBT *pivotkey
 
 // This is only exported for tests.
 // append a message to a nonleaf node child buffer
-void toku_ft_append_to_child_buffer(const toku::comparator &cmp, FTNODE node, int childnum, enum ft_msg_type type, MSN msn, XIDS xids, bool is_fresh, const DBT *key, const DBT *val);
+void toku_ft_append_to_child_buffer(const toku::comparator &cmp, FTNODE node, int childnum, enum ft_msg_type_raw type, MSN msn, XIDS xids, bool is_fresh, const DBT *key, const DBT *val);
 
 STAT64INFO_S toku_get_and_clear_basement_stats(FTNODE leafnode);
 
@@ -406,7 +406,7 @@ int toku_testsetup_nonleaf (FT_HANDLE ft_h, int height, BLOCKNUM *blocknum, int 
 int toku_testsetup_root(FT_HANDLE ft_h, BLOCKNUM);
 int toku_testsetup_get_sersize(FT_HANDLE ft_h, BLOCKNUM); // Return the size on disk.
 int toku_testsetup_insert_to_leaf (FT_HANDLE ft_h, BLOCKNUM, const char *key, int keylen, const char *val, int vallen);
-int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_h, BLOCKNUM, enum ft_msg_type, const char *key, int keylen, const char *val, int vallen);
+int toku_testsetup_insert_to_nonleaf (FT_HANDLE ft_h, BLOCKNUM, enum ft_msg_type_raw, const char *key, int keylen, const char *val, int vallen);
 void toku_pin_node_with_min_bfe(FTNODE* node, BLOCKNUM b, FT_HANDLE t);
 
 void toku_ft_root_put_msg(FT ft, const ft_msg &msg, txn_gc_info *gc_info);

@@ -70,6 +70,14 @@ public:
                                   int32_t **broadcast_offsets, int32_t *nbroadcast);
 
     void enqueue(const ft_msg &msg, bool is_fresh, int32_t *offset);
+    
+    void dequeue(int n);
+
+    void merge_with(message_buffer & other);
+
+    void set_broadcast_message_ref_count(int32_t offset, int rc);
+
+    void get_broadcast_message_ref_count(int32_t offset, int * rc);
 
     void set_freshness(int32_t offset, bool is_fresh);
 
@@ -83,6 +91,8 @@ public:
 
     size_t buffer_size_in_use() const;
 
+    size_t buffer_weighted_size_in_use() const;
+
     size_t memory_size_in_use() const;
 
     size_t memory_footprint() const;
@@ -92,6 +102,36 @@ public:
         for (int32_t offset = 0; offset < _memory_used; ) {
             DBT k, v;
             const ft_msg msg = get_message(offset, &k, &v);
+            bool is_fresh = get_freshness(offset);
+            int r = fn(msg, is_fresh);
+            if (r != 0) {
+                return r;
+            }
+            offset += msg_memsize_in_buffer(msg);
+        }
+        return 0;
+    }
+
+    template <typename F>
+    int iterate2(F &fn) const {
+        for (int32_t offset = 0; offset < _memory_used; ) {
+            DBT k, v;
+            const ft_msg msg = get_message(offset, &k, &v);
+            bool is_fresh = get_freshness(offset);
+            int r = fn(msg, is_fresh, offset);
+            if (r != 0) {
+                return r;
+            }
+            offset += msg_memsize_in_buffer(msg);
+        }
+        return 0;
+    }
+
+    template <typename F>
+    int iterate3(F &fn) const {
+        for (int32_t offset = 0; offset < _memory_used; ) {
+            DBT k, v;
+            ft_msg msg = get_message(offset, &k, &v);
             bool is_fresh = get_freshness(offset);
             int r = fn(msg, is_fresh);
             if (r != 0) {

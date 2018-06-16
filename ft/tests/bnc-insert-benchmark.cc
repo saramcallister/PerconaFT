@@ -98,14 +98,14 @@ run_test(unsigned long eltsize, unsigned long nodesize, unsigned long repeat)
       destroy_nonleaf_childinfo(BNC(node, 0));
       set_BNC(node, 0, bnc);
       BP_STATE(node, 0) = PT_AVAIL;
-      for (; toku_bnc_nbytesinbuf(bnc) <= nodesize; ++cur) {
+      for (; toku_bnc_nbytesinbuf(node, 0) <= nodesize; ++cur) {
         toku_bnc_insert_msg(node, bnc, &keys[cur % n], sizeof keys[cur % n],
                             vals[cur % n], eltsize - (sizeof keys[cur % n]),
                             FT_NONE, next_dummymsn(), xids_123, true, cmp);
         assert_zero(r);
         }
-      nbytesinserted += toku_bnc_nbytesinbuf(bnc);
-      toku_ftnode_free(node);
+      nbytesinserted += toku_bnc_nbytesinbuf(node, 0);
+      toku_ftnode_free(&node);
     }
 
     for (int i = 0; i < n; ++i) {
