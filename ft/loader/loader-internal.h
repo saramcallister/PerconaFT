@@ -62,7 +62,7 @@ enum {
 /* These functions are exported to allow the tests to compile. */
 
 /* These structures maintain a collection of all the open temporary files used by the loader. */
-struct file_info {
+struct loader_file_info {
     bool is_open;
     bool is_extant;  // if true, the file must be unlinked.
     char *fname;
@@ -74,7 +74,7 @@ struct file_info {
 struct file_infos {
     int n_files;
     int n_files_limit;
-    struct file_info *file_infos;
+    struct loader_file_info *file_infos;
     int n_files_open, n_files_extant;
     toku_mutex_t lock; // must protect this data structure because current activity performs a REALLOC(fi->file_infos).
 };

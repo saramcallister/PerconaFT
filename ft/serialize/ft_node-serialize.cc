@@ -428,6 +428,7 @@ serialize_ftnode_info_size(FTNODE node)
     if (node->height() > 0) {
         retval += node->n_children()*8; // child blocknum's
         retval += (4 + node->broadcast_list().buffer_size_in_use());
+        retval += node->bloom_filter_size();
     }
     retval += 4; // checksum
     return retval;
@@ -445,6 +446,7 @@ static uint32_t serialize_ftnode_info_weighted_size(FTNODE node) {
   if (node->height() > 0) {
     retval += node->n_children() * 8; // child blocknum's
     retval += (4 + node->broadcast_list().buffer_weighted_size_in_use());
+    retval += node->bloom_filter_size();
   }
   retval += 4; // checksum
   return retval;
@@ -471,6 +473,7 @@ static void serialize_ftnode_info(FTNODE node, SUB_BLOCK sb) {
             wbuf_nocrc_BLOCKNUM(&wb, BP_BLOCKNUM(node,i));
         }
         node->broadcast_list().serialize_to_wbuf(&wb);
+        node->serialize_bloom_filter_to_wbuf(&wb);
     }
     uint32_t end_to_end_checksum = toku_x1764_memory(sb->uncompressed_ptr, wbuf_get_woffset(&wb));
     wbuf_nocrc_int(&wb, end_to_end_checksum);
@@ -1300,8 +1303,10 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
     (void)rbuf_int(&rb);
     node->flags() = rbuf_int(&rb);
     node->height() = rbuf_int(&rb);
-    if (node->height() > 0)
+    if (node->height() > 0) {
       XMALLOC_N(node->n_children(), node->children_blocknum()); 
+      node->create_bloom_filter();
+    }
     if (node->layout_version_read_from_disk() < FT_LAYOUT_VERSION_19) {
         (void) rbuf_int(&rb); // optimized_for_upgrade
     }
@@ -1333,6 +1338,9 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
           &rb, nullptr, nullptr, // fresh_offsets, nfresh,
           nullptr, nullptr,      // stale_offsets, nstale,
           nullptr, nullptr);     // broadcast_offsets, nbroadcast
+      char nodename[1024];
+      sprintf(nodename, "Blocknum[%" PRIu64 "]", node->blocknum().b);
+      node->deserialize_bloom_filter_from_rbuf(&rb, nodename);
     }
     // make sure that all the data was read
     if (data_size != rb.ndone) {
@@ -1937,8 +1945,10 @@ cleanup:
         if (node) {
             toku_free(*ndd);
             toku_free(node->bp());
-            if (node->height() > 0)
+            if (node->height() > 0) {
               toku_free(node->children_blocknum());
+              node->destroy_bloom_filter();
+	    }
             toku_free(node);
         }
     }
@@ -2623,8 +2633,10 @@ cleanup:
         // the FT, then we will leak memory.
         if (node) {
           toku_free(node->bp());
-          if (node->height() > 0)
+          if (node->height() > 0) {
             toku_free(node->children_blocknum());
+            node->destroy_bloom_filter();
+          }
           toku_free(node);
         }
     }

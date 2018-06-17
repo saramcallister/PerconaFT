@@ -340,6 +340,7 @@ static void test_prefetching(void) {
     sn.dirty() = 1;
     sn.oldest_referenced_xid_known() = TXNID_NONE;
     sn.broadcast_list().create();
+    sn.create_bloom_filter();
     XMALLOC_N(sn.n_children(), sn.children_blocknum());
     XMALLOC_N(sn.n_children(), sn.bp());
 

@@ -272,6 +272,7 @@ static void test_serialize_nonleaf(int valsize,
     MALLOC_N(sn.n_children(), sn.bp());
     MALLOC_N(sn.n_children(), sn.children_blocknum());
     sn.broadcast_list().create();
+    sn.create_bloom_filter();
     sn.pivotkeys().create_empty();
     for (int i = 0; i < sn.n_children(); ++i) {
         BP_BLOCKNUM(&sn, i).b = 30 + (i * 5);

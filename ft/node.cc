@@ -63,9 +63,13 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
     n->oldest_referenced_xid_known() = TXNID_NONE;
     n->broadcast_list().create();
 
+    if(height > 0) {
+        n->create_bloom_filter();
+    }
     if (num_children > 0) {
-      if (height > 0)
+      if (height > 0) {
         XMALLOC_N(num_children, n->children_blocknum());
+      }
       XMALLOC_N(num_children, n->bp());
       for (int i = 0; i < num_children; i++) {
         if (height > 0)
@@ -110,8 +114,11 @@ void toku_destroy_ftnode_internals(FTNODE node) {
         set_BNULL(node, i);
     }
     node->broadcast_list().destroy();
-    if (node->height() > 0) 
-      toku_free(node->children_blocknum());
+    if (node->height() > 0) {
+      if(node->n_children() > 0)
+      	toku_free(node->children_blocknum());
+      node->destroy_bloom_filter();
+    }
     toku_free(node->bp());
     node->bp() = NULL;
 }

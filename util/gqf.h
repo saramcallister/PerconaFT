@@ -89,7 +89,7 @@ extern "C" {
 		LOCKS_REQUIRED
 	};
 
-	typedef struct file_info {
+	typedef struct qgf_file_info {
 		int fd;
 		char *filepath;
 	} file_info;

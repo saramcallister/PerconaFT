@@ -658,8 +658,15 @@ void toku_ftnode_clone_callback(void *value_data,
     cloned_node->dirty() = node->dirty();
     cloned_node->fullhash() = node->fullhash();
     cloned_node->n_children() = node->n_children();
-    if (cloned_node->height() > 0)
-        XMALLOC_N(node->n_children(), cloned_node->children_blocknum());
+    cloned_node->broadcast_list().create();
+    if (cloned_node->height() > 0) {
+      XMALLOC_N(node->n_children(), cloned_node->children_blocknum());
+      memcpy(cloned_node->children_blocknum(), node->children_blocknum(),
+             node->n_children() *
+                 sizeof((cloned_node->children_blocknum())[0]));
+      cloned_node->broadcast_list().clone(&node->broadcast_list());
+      cloned_node->clone_bloom_filter(&node->bloom_filter());
+    }
     XMALLOC_N(node->n_children(), cloned_node->bp());
     // clone pivots
     cloned_node->pivotkeys().create_from_pivot_keys(node->pivotkeys());

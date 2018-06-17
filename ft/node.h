@@ -42,6 +42,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/comparator.h"
 #include "ft/ft.h"
 #include "ft/msg_buffer.h"
+#include "util/gqf.h"
+#include "util/hashutil.h"
 
 /* Pivot keys.
  * Child 0's keys are <= pivotkeys[0].
@@ -197,7 +199,7 @@ struct ftnode_header {
   //broadcast msgs stored in header, appliable to all children
   message_buffer _broadcast_msgs;
   //bloom filter
-  //bloom_filter filter;
+  QF _filter;
 };
 
 struct ftnode_buffer {
@@ -280,6 +282,80 @@ public:
     return _header._ct_pair;
   }
   message_buffer &broadcast_list() { return _header._broadcast_msgs; }
+
+  QF &bloom_filter() { return _header._filter; }
+
+  void create_bloom_filter() {
+    const uint64_t _qbits = 10;
+    const uint64_t _nhashbits = _qbits + 8;
+    const uint64_t _nslots = (1ULL << _qbits);
+    qf_malloc(&_header._filter, _nslots, _nhashbits, 0, LOCKS_REQUIRED,
+              INVERTIBLE, 0);
+  }
+
+  void destroy_bloom_filter() { qf_destroy(&_header._filter); }
+
+  uint32_t serialize_bloom_filter_to_wbuf(struct wbuf *wb) {
+    QF * qf = &_header._filter;
+    wbuf_nocrc_literal_bytes(wb, qf->metadata, sizeof(qfmetadata));
+    wbuf_nocrc_literal_bytes(wb, qf->blocks, qf->metadata->total_size_in_bytes);
+    return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;
+  }
+
+  void deserialize_bloom_filter_from_rbuf(struct rbuf *rb, const char * filename) {
+    QF * qf = &_header._filter;
+    qf->metadata = (qfmetadata *)calloc(sizeof(qfmetadata), 1);
+    const void * temp;
+    rbuf_literal_bytes(rb, &temp, sizeof(qfmetadata));
+    memcpy(qf->metadata, (qfmetadata *)temp, sizeof(qfmetadata));
+
+    qf->blocks = (qfblock *)calloc(qf->metadata->total_size_in_bytes, 1);
+    rbuf_literal_bytes(rb, &temp, qf->metadata->total_size_in_bytes);
+    memcpy(qf->blocks, (qfblock*) temp, qf->metadata->total_size_in_bytes);	
+
+    qf->runtimedata = (qfruntime *)calloc(sizeof(qfruntime), 1);
+    qf->runtimedata->f_info.filepath = (char *)toku_xmalloc(strlen(filename));
+    strcpy(qf->runtimedata->f_info.filepath, filename);
+
+    qf->runtimedata->lock_mode = LOCKS_REQUIRED;
+    qf->runtimedata->num_locks = (qf->metadata->xnslots/NUM_SLOTS_TO_LOCK)+2;
+    qf->runtimedata->metadata_lock = 0;
+
+    qf->runtimedata->locks = (volatile int *)calloc(qf->runtimedata->num_locks,
+																					sizeof(volatile int));
+
+  }
+
+  uint32_t bloom_filter_size() {
+    QF * qf = &_header._filter;
+    return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;
+  }
+
+  void clone_bloom_filter(QF *another) {
+    QF *qf = &_header._filter;
+
+    qf->runtimedata = (qfruntime *)calloc(sizeof(qfruntime), 1);
+    qf->metadata = (qfmetadata *)calloc(sizeof(qfmetadata), 1);
+    memcpy(qf->metadata, another->metadata, sizeof(qfmetadata));
+
+    if (another->runtimedata->f_info.filepath) {
+      qf->runtimedata->f_info.filepath =
+          (char *)toku_xmalloc(strlen(another->runtimedata->f_info.filepath));
+      strcpy(qf->runtimedata->f_info.filepath,
+             another->runtimedata->f_info.filepath);
+    }
+    qf->runtimedata->lock_mode = another->runtimedata->lock_mode;
+    qf->runtimedata->num_locks = another->runtimedata->num_locks;
+    qf->runtimedata->metadata_lock = another->runtimedata->metadata_lock;
+
+    qf->runtimedata->locks = (volatile int *)calloc(qf->runtimedata->num_locks,
+                                                    sizeof(volatile int));
+    memcpy((void*)qf->runtimedata->locks, (void *)another->runtimedata->locks,
+           qf->runtimedata->num_locks * sizeof(volatile int));
+
+    qf->blocks = (qfblock *)calloc(qf->metadata->total_size_in_bytes, 1);
+    memcpy(qf->blocks, another->blocks, qf->metadata->total_size_in_bytes);
+  }
 };
 typedef struct ftnode *FTNODE;
 

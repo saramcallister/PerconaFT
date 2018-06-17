@@ -250,6 +250,7 @@ static void test_serialize_nonleaf(void) {
     sn.oldest_referenced_xid_known() = TXNID_NONE;
     MALLOC_N(2, sn.bp());
     MALLOC_N(2, sn.children_blocknum());
+    sn.create_bloom_filter();
     DBT pivotkey;
     sn.pivotkeys().create_from_dbts(toku_fill_dbt(&pivotkey, "hello", 6), 1);
     BP_BLOCKNUM(&sn, 0).b = 30;
