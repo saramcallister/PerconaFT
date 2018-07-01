@@ -678,6 +678,27 @@ struct broadcast_msg_filter_for_split_node {
   }
 };
 
+struct add_bnc_msgs_to_filter {
+  FTNODE node;
+  NONLEAF_CHILDINFO bnc;
+  add_bnc_msgs_to_filter(FTNODE n, NONLEAF_CHILDINFO b) : node(n), bnc(b) {}
+  int operator()(ft_msg &msg, bool UU(is_fresh)) {
+    DBT key;
+    toku_fill_dbt(&key, msg.kdbt()->data, msg.kdbt()->size);
+    node->insert_into_bloom_filter(&key);
+    return 0;
+  };
+};
+
+static void rebuild_bloom_filter_for_split(FTNODE UU(node)) {
+  node->reset_bloom_filter();
+  for (int i = 0; i < node->n_children(); i++) {
+    NONLEAF_CHILDINFO bnc = BNC(node, i);
+    struct add_bnc_msgs_to_filter insert_fun(node, bnc);
+    bnc->msg_buffer.iterate3(insert_fun);
+  }
+}
+
 static void update_broadcast_list_for_split(FTNODE node) {
   message_buffer temp;
   temp.create();
@@ -705,6 +726,8 @@ static void ftnode_finalize_split(FTNODE node, FTNODE B, MSN max_msn_applied_to_
     if (node->height() > 0) {
       update_broadcast_list_for_split(node);
       update_broadcast_list_for_split(B);
+      rebuild_bloom_filter_for_split(node);
+      rebuild_bloom_filter_for_split(B);
     }
 }
 
@@ -1076,6 +1099,22 @@ static void dec_ref_and_fetch_applicable_broadcast_msgs(
   }
 }
 
+static void update_bloom_filter_for_flush(FTNODE node, NONLEAF_CHILDINFO bnc) {
+  struct remove_bnc_msg_from_filter {
+    FTNODE node;
+    NONLEAF_CHILDINFO bnc;
+    remove_bnc_msg_from_filter(FTNODE n, NONLEAF_CHILDINFO b)
+        : node(n), bnc(b) {}
+    int operator()(ft_msg &msg, bool UU(is_fresh)) {
+      DBT key;
+      toku_fill_dbt(&key, msg.kdbt()->data, msg.kdbt()->size);
+      node->remove_from_bloom_filter(&key);
+      return 0;
+    }
+  } remove_msgs_from_filter(node, bnc);
+  bnc->msg_buffer.iterate3(remove_msgs_from_filter);
+}
+
 static void
 flush_this_child(
     FT ft,
@@ -1102,6 +1141,9 @@ flush_this_child(
     BP_WORKDONE(node, childnum) = 0;  // this buffer is drained, no work has been done by its contents
     NONLEAF_CHILDINFO bnc = BNC(node, childnum);
     set_BNC(node, childnum, toku_create_empty_nl());
+
+    // update bloom filter
+    update_bloom_filter_for_flush(node, bnc);
     // broadcast msgs
     message_buffer broadcasts;
     broadcasts.create();
@@ -1244,8 +1286,12 @@ maybe_merge_pinned_leaf_nodes(
     }
 }
 
-static void update_new_node_for_merge(FTNODE a, FTNODE b) {
+static void update_broadcast_for_merge(FTNODE a, FTNODE b) {
   a->broadcast_list().merge_with(b->broadcast_list());
+}
+
+static void update_bloom_filter_for_merge(FTNODE a, FTNODE b) {
+  a->merge_bloom_filter_with(&b->bloom_filter());
 }
 static void
 maybe_merge_pinned_nonleaf_nodes(
@@ -1271,7 +1317,8 @@ maybe_merge_pinned_nonleaf_nodes(
     memcpy(a->children_blocknum() + old_n_children, b->children_blocknum(), b->n_children() * sizeof((b->children_blocknum())[0]));
     memset(b->children_blocknum(), 0, b->n_children() * sizeof((b->children_blocknum())[0]));
 
-    update_new_node_for_merge(a, b);
+    update_broadcast_for_merge(a, b);
+    update_bloom_filter_for_merge(a, b);
     a->pivotkeys().insert_at(parent_splitk, old_n_children - 1);
     a->pivotkeys().append(b->pivotkeys());
     a->n_children() = new_n_children;
@@ -1568,6 +1615,9 @@ void toku_ft_flush_some_child(FT ft, FTNODE parent, struct flusher_advice *fa)
       NONLEAF_CHILDINFO new_bnc = toku_create_empty_nl();
       memcpy(new_bnc->flow, bnc->flow, sizeof bnc->flow);
       set_BNC(parent, childnum, new_bnc);
+      // update bloom filter
+      update_bloom_filter_for_flush(parent, bnc);
+
       // broadcast msgs
       message_buffer broadcasts;
       broadcasts.create();
@@ -2034,6 +2084,9 @@ void toku_ft_flush_node_on_background_thread(FT ft, FTNODE parent)
             NONLEAF_CHILDINFO new_bnc = toku_create_empty_nl();
             memcpy(new_bnc->flow, bnc->flow, sizeof bnc->flow);
             set_BNC(parent, childnum, new_bnc);
+            // update bloom filter
+            update_bloom_filter_for_flush(parent, bnc);
+
             // broadcast msgs
             message_buffer broadcasts;
             broadcasts.create();

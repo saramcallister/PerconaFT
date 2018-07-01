@@ -46,7 +46,6 @@ extern "C" {
 
 	/* read data structure off the disk */
 	uint64_t qf_deserialize(QF *qf, enum lockingmode lock, const char *filename);
-
 #ifdef __cplusplus
 }
 #endif

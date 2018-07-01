@@ -37,7 +37,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #ident "Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved."
 
 #include "portability/toku_atomic.h"
-
+#include "ft/cursor.h"
 #include "ft/cachetable/cachetable.h"
 #include "ft/ft.h"
 #include "ft/ft-internal.h"
@@ -1388,8 +1388,9 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
             node,
             bfe->search
             );
+	if(!node->is_key_in_bloom_filter(bfe->search->k))
         //if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
-         // bfe->type = ftnode_fetch_none;
+          bfe->type = ftnode_fetch_none;
     } else if (bfe->type == ftnode_fetch_keymatch) {
         // we do not take into account prefetching yet
         // as of now, if we need a subset, the only thing

@@ -286,75 +286,101 @@ public:
   QF &bloom_filter() { return _header._filter; }
 
   void create_bloom_filter() {
-    const uint64_t _qbits = 10;
+    const uint64_t _qbits = 24;
     const uint64_t _nhashbits = _qbits + 8;
     const uint64_t _nslots = (1ULL << _qbits);
     qf_malloc(&_header._filter, _nslots, _nhashbits, 0, LOCKS_REQUIRED,
-              INVERTIBLE, 0);
+              DEFAULT, 0);
+    qf_set_auto_resize(&_header._filter);
   }
 
   void destroy_bloom_filter() { qf_destroy(&_header._filter); }
 
   uint32_t serialize_bloom_filter_to_wbuf(struct wbuf *wb) {
-    QF * qf = &_header._filter;
+    QF *qf = &_header._filter;
     wbuf_nocrc_literal_bytes(wb, qf->metadata, sizeof(qfmetadata));
     wbuf_nocrc_literal_bytes(wb, qf->blocks, qf->metadata->total_size_in_bytes);
     return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;
   }
 
-  void deserialize_bloom_filter_from_rbuf(struct rbuf *rb, const char * filename) {
-    QF * qf = &_header._filter;
+  void deserialize_bloom_filter_from_rbuf(struct rbuf *rb,
+                                          const char *filename) {
+    QF *qf = &_header._filter;
     qf->metadata = (qfmetadata *)calloc(sizeof(qfmetadata), 1);
-    const void * temp;
+    const void *temp;
     rbuf_literal_bytes(rb, &temp, sizeof(qfmetadata));
     memcpy(qf->metadata, (qfmetadata *)temp, sizeof(qfmetadata));
 
     qf->blocks = (qfblock *)calloc(qf->metadata->total_size_in_bytes, 1);
     rbuf_literal_bytes(rb, &temp, qf->metadata->total_size_in_bytes);
-    memcpy(qf->blocks, (qfblock*) temp, qf->metadata->total_size_in_bytes);	
+    memcpy(qf->blocks, (qfblock *)temp, qf->metadata->total_size_in_bytes);
 
     qf->runtimedata = (qfruntime *)calloc(sizeof(qfruntime), 1);
     qf->runtimedata->f_info.filepath = (char *)toku_xmalloc(strlen(filename));
     strcpy(qf->runtimedata->f_info.filepath, filename);
 
     qf->runtimedata->lock_mode = LOCKS_REQUIRED;
-    qf->runtimedata->num_locks = (qf->metadata->xnslots/NUM_SLOTS_TO_LOCK)+2;
+    qf->runtimedata->num_locks =
+        (qf->metadata->xnslots / NUM_SLOTS_TO_LOCK) + 2;
     qf->runtimedata->metadata_lock = 0;
 
     qf->runtimedata->locks = (volatile int *)calloc(qf->runtimedata->num_locks,
-																					sizeof(volatile int));
-
+                                                    sizeof(volatile int));
   }
 
   uint32_t bloom_filter_size() {
-    QF * qf = &_header._filter;
+    QF *qf = &_header._filter;
     return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;
   }
 
   void clone_bloom_filter(QF *another) {
     QF *qf = &_header._filter;
+    qf_copy(qf, another);
+  }
 
-    qf->runtimedata = (qfruntime *)calloc(sizeof(qfruntime), 1);
-    qf->metadata = (qfmetadata *)calloc(sizeof(qfmetadata), 1);
-    memcpy(qf->metadata, another->metadata, sizeof(qfmetadata));
+  bool is_key_in_bloom_filter(const DBT *k) {
+    size_t size = k->size;
+    char *data = (char *)k->data;
+    void *key_p = toku_xmalloc(sizeof(size_t) + size * sizeof(char));
+    *(size_t *)key_p = size;
+    memcpy((size_t *)key_p + 1, data, size * sizeof(char));
+    int r = qf_count_key_value(&_header._filter, (uint64_t)key_p, 0);
+    toku_free(key_p);
+    return r>0;
+  }
 
-    if (another->runtimedata->f_info.filepath) {
-      qf->runtimedata->f_info.filepath =
-          (char *)toku_xmalloc(strlen(another->runtimedata->f_info.filepath));
-      strcpy(qf->runtimedata->f_info.filepath,
-             another->runtimedata->f_info.filepath);
-    }
-    qf->runtimedata->lock_mode = another->runtimedata->lock_mode;
-    qf->runtimedata->num_locks = another->runtimedata->num_locks;
-    qf->runtimedata->metadata_lock = another->runtimedata->metadata_lock;
+  void insert_into_bloom_filter(DBT *k) {
+    size_t size = k->size;
+    char *data = (char *)k->data;
+    void *key_p = toku_xmalloc(sizeof(size_t) + size * sizeof(char));
+    *(size_t *)key_p = size;
+    memcpy((size_t *)key_p + 1, data, size * sizeof(char));
+    qf_insert(&_header._filter, (uint64_t)key_p, 0, 1);
+    toku_free(key_p);
+  }
 
-    qf->runtimedata->locks = (volatile int *)calloc(qf->runtimedata->num_locks,
-                                                    sizeof(volatile int));
-    memcpy((void*)qf->runtimedata->locks, (void *)another->runtimedata->locks,
-           qf->runtimedata->num_locks * sizeof(volatile int));
+  void remove_from_bloom_filter(DBT *k) {
+    size_t size = k->size;
+    char *data = (char *)k->data;
+    void *key_p = toku_xmalloc(sizeof(size_t) + size * sizeof(char));
+    *(size_t *)key_p = size;
+    memcpy((size_t *)key_p + 1, data, size * sizeof(char));
+    qf_remove(&_header._filter, (uint64_t)key_p, 0, 1);
+    toku_free(key_p);
+  }
 
-    qf->blocks = (qfblock *)calloc(qf->metadata->total_size_in_bytes, 1);
-    memcpy(qf->blocks, another->blocks, qf->metadata->total_size_in_bytes);
+  void reset_bloom_filter() { qf_reset(&_header._filter); }
+  void merge_bloom_filter_with(QF *another) {
+    const uint64_t _qbits = 24;
+    const uint64_t _nhashbits = _qbits + 8;
+    const uint64_t _nslots = (1ULL << _qbits);
+    QF temp;
+    qf_malloc(&temp, _nslots, _nhashbits, 0, LOCKS_REQUIRED, INVERTIBLE, 0);
+    qf_set_auto_resize(&temp);
+    QF *qf = &_header._filter;
+    qf_copy(qf, &temp);
+    qf_reset(qf);
+    qf_merge(&temp, another, qf);
   }
 };
 typedef struct ftnode *FTNODE;

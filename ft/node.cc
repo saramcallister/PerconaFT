@@ -1811,6 +1811,7 @@ static void bnc_insert_msg(FTNODE UU(node), NONLEAF_CHILDINFO bnc, const ft_msg 
         bnc->msg_buffer.enqueue(msg, is_fresh, &offset);
         DBT key;
         toku_fill_dbt(&key, msg.kdbt()->data, msg.kdbt()->size);
+	node->insert_into_bloom_filter(&key);
         struct toku_msg_buffer_key_msn_heaviside_extra extra(cmp, &bnc->msg_buffer, &key, msg.msn());
         if (is_fresh) {
             r = bnc->fresh_message_tree.insert<struct toku_msg_buffer_key_msn_heaviside_extra, toku_msg_buffer_key_msn_heaviside>(offset, extra, nullptr);

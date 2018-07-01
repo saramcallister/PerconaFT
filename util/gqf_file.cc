@@ -197,3 +197,4 @@ uint64_t qf_deserialize(QF *qf, enum lockingmode lock, const char *filename)
 	return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;
 }
 
+
