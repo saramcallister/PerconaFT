@@ -42,7 +42,7 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "ft/txn/xids.h"
 #include "util/dbt.h"
 
-ft_msg::ft_msg(const DBT *key, const DBT *val, enum ft_msg_type t, MSN m, XIDS x) :
+ft_msg::ft_msg(const DBT *key, const DBT *val, ft_msg_type t, MSN m, XIDS x) :
     _key(key ? *key : toku_empty_dbt()),
     _val(val ? *val : toku_empty_dbt()),
     _type(t), _msn(m), _xids(x) {
@@ -51,7 +51,14 @@ ft_msg::ft_msg(const DBT *key, const DBT *val, enum ft_msg_type t, MSN m, XIDS x
 ft_msg ft_msg::deserialize_from_rbuf(struct rbuf *rb, XIDS *x, bool *is_fresh) {
     const void *keyp, *valp;
     uint32_t keylen, vallen;
-    enum ft_msg_type t = (enum ft_msg_type) rbuf_char(rb);
+    ft_msg_type t;
+    enum ft_msg_type_raw raw_type = (enum ft_msg_type_raw) rbuf_char(rb);
+    if(ft_msg_type_applies_all(raw_type)) {
+	t.ref_count = rbuf_int(rb); //broad cast msgs
+    } else {
+	t.ref_count = 0xdeadbeef; //single point msgs
+    }
+    t.raw_type = raw_type;
     *is_fresh = rbuf_char(rb);
     MSN m = rbuf_MSN(rb);
     toku_xids_create_from_buffer(rb, x);
@@ -65,7 +72,16 @@ ft_msg ft_msg::deserialize_from_rbuf(struct rbuf *rb, XIDS *x, bool *is_fresh) {
 ft_msg ft_msg::deserialize_from_rbuf_v13(struct rbuf *rb, MSN m, XIDS *x) {
     const void *keyp, *valp;
     uint32_t keylen, vallen;
-    enum ft_msg_type t = (enum ft_msg_type) rbuf_char(rb);
+
+    ft_msg_type t;
+    enum ft_msg_type_raw raw_type = (enum ft_msg_type_raw) rbuf_char(rb);
+    if(ft_msg_type_applies_all(raw_type)) {
+	t.ref_count = rbuf_int(rb); //broad cast msgs
+    } else {
+	t.ref_count = 0xdeadbeef; //single point msgs
+    }
+    t.raw_type = raw_type;
+
     toku_xids_create_from_buffer(rb, x);
     rbuf_bytes(rb, &keyp, &keylen);
     rbuf_bytes(rb, &valp, &vallen);
@@ -82,8 +98,13 @@ const DBT *ft_msg::vdbt() const {
     return &_val;
 }
 
-enum ft_msg_type ft_msg::type() const {
-    return _type;
+int ft_msg::ref_count_of_broadcast_msg() const {
+    assert(ft_msg_type_applies_all(_type.raw_type);
+    return _type.ref_count;
+}
+
+enum ft_msg_type_raw ft_msg::type() const {
+    return _type.raw_type;
 }
 
 MSN ft_msg::msn() const {
@@ -99,8 +120,12 @@ size_t ft_msg::total_size() const {
     static const size_t key_val_overhead = 8;
 
     // 1 byte type, 1 byte freshness, then 8 byte MSN
-    static const size_t msg_overhead = 2 + sizeof(MSN);
-
+    static const size_t msg_overhead;
+    if (ft_msg_type_applies_all(_type.raw_type)) {
+      msg_overhead = sizeof(ft_msg_type) + sizeof(bool) + sizeof(MSN);
+    } else {
+      msg_overhead = sizeof(char) + sizeof(bool) + sizeof(MSN);
+    }
     static const size_t total_overhead = key_val_overhead + msg_overhead;
 
     const size_t keyval_size = _key.size + _val.size;
@@ -109,7 +134,9 @@ size_t ft_msg::total_size() const {
 }
 
 void ft_msg::serialize_to_wbuf(struct wbuf *wb, bool is_fresh) const {
-    wbuf_nocrc_char(wb, (unsigned char) _type);
+    wbuf_nocrc_char(wb, (unsigned char) _type.raw_type);
+    if (ft_msg_type_applies_all(_type.raw_type))
+	wbuf_nocrc_int(wb, _type.ref_count);    
     wbuf_nocrc_char(wb, (unsigned char) is_fresh);
     wbuf_MSN(wb, _msn);
     wbuf_nocrc_xids(wb, _xids);

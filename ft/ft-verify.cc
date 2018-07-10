@@ -313,9 +313,9 @@ struct verify_msg_fn {
             VERIFY_ASSERTION(total_count >= 1, msg_i, "a message was not found in either message tree");
         } else {
             VERIFY_ASSERTION(ft_msg_type_applies_all(type) || ft_msg_type_does_nothing(type), msg_i, "a message was found that does not apply either to all or to only one key");
-            struct count_msgs_extra extra = { .count = 0, .msn = msn, .msg_buffer = &bnc->msg_buffer };
-            bnc->broadcast_list.iterate<struct count_msgs_extra, count_msgs>(&extra);
-            VERIFY_ASSERTION(extra.count == 1, msg_i, "a broadcast message was not found in the broadcast list");
+            //struct count_msgs_extra extra = { .count = 0, .msn = msn, .msg_buffer = &bnc->msg_buffer };
+            //bnc->broadcast_list.iterate<struct count_msgs_extra, count_msgs>(&extra);
+            //VERIFY_ASSERTION(extra.count == 1, msg_i, "a broadcast message was not found in the broadcast list");
         }
         last_msn = msn;
         msg_i++;
@@ -399,8 +399,8 @@ toku_verify_ftnode_internal(FT_HANDLE ft_handle,
             }
 
             extra.broadcast = true;
-            r = bnc->broadcast_list.iterate<struct verify_message_tree_extra, verify_message_tree>(&extra);
-            if (r != 0) { result = r; goto done; }
+            //r = bnc->broadcast_list.iterate<struct verify_message_tree_extra, verify_message_tree>(&extra);
+            //if (r != 0) { result = r; goto done; }
         }
         else {
             BASEMENTNODE bn = BLB(node, i);

@@ -98,8 +98,9 @@ static void test_serialize_leaf(int valsize,
     sn->dirty() = 1;
     sn->oldest_referenced_xid_known() = TXNID_NONE;
     MALLOC_N(sn->n_children(), sn->bp());
-    MALLOC_N(sn->n_children(), sn->children_blocknum());
+//    MALLOC_N(sn->n_children(), sn->children_blocknum());
     sn->pivotkeys().create_empty();
+    sn->broadcast_list().create();
     for (int i = 0; i < sn->n_children(); ++i) {
         BP_STATE(sn, i) = PT_AVAIL;
         set_BLB(sn, i, toku_create_empty_bn());
@@ -270,6 +271,7 @@ static void test_serialize_nonleaf(int valsize,
     sn.oldest_referenced_xid_known() = TXNID_NONE;
     MALLOC_N(sn.n_children(), sn.bp());
     MALLOC_N(sn.n_children(), sn.children_blocknum());
+    sn.broadcast_list().create();
     sn.pivotkeys().create_empty();
     for (int i = 0; i < sn.n_children(); ++i) {
         BP_BLOCKNUM(&sn, i).b = 30 + (i * 5);

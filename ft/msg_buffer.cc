@@ -35,7 +35,8 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 
 #ident "Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved."
 
-#include "ft/msg_buffer.h"
+
+}#include "ft/msg_buffer.h"
 #include "util/dbt.h"
 
 void message_buffer::create() {
@@ -190,6 +191,118 @@ void message_buffer::enqueue(const ft_msg &msg, bool is_fresh, int32_t *offset) 
     memcpy(e_key, msg.kdbt()->data, keylen);
     entry->vallen = datalen;
     memcpy(e_key + keylen, msg.vdbt()->data, datalen);
+    if (ft_msg_type_applies_all(entry->type)) {
+      memcpy(e_key + keylen + datalen, msg.ref_count_of_broadcast_msg(),
+             sizeof(int));
+    }
+    if (offset) {
+        *offset = _memory_used;
+    }
+    _num_entries++;
+    _memory_used += need_space_here;
+}
+
+void message_buffer::dequeue(int n) {
+  for (int i = 0, int32_t offs = 0; i < n; i++) {
+    DBT k, v;
+    ft_msg msg = get_message(offs, &k, &v);
+    offs += msg_memsize_in_buffer(msg);
+  }
+  memmove(_memory, _memory + offs, _memory_used - offs);
+  XREALLOC(new_size, _memory);
+  _num_entries -= i;
+  _memory_usable = toku_malloc_usable_size(_memory);
+}
+
+void message_buffer::merge_with(message_buffer &other) {
+  size_t newsize = _memory_size + other._memory_size;
+  char *temp;
+  XMALLOC_N(newsize, temp);
+  // merge sort
+  int32_t offset = 0, offset_other = 0, offset_temp = 0;
+  while (offset < _memory_used && offset_other < other._memory_used) {
+    DBT k1, v1, k2, v2;
+    const ft_msg msg = this->get_message(offset, &k, &v);
+    const ft_msg msg_other = other.get_message(offset_other, &k2, &v2);
+    char *src;
+    int32_t gap;
+    if (msg.msn().msn < msg_other.msn().msn) {
+      src = _memory + offset;
+      gap = this->msg_memsize_in_buffer(msg);
+      offset += gap;
+    } else if (msg.msn().msn > msg_other.msn().msn) {
+      src = other._memory + offset_other;
+      gap = other.msg_memsize_in_buffer(msg_other);
+      offset_other += gap;
+    } else {
+      src = _memory + offset;
+      gap = msg_memsize_in_buffer(msg);
+      offset_other += gap;
+      offset += gap;
+      int rc1, rc2;
+      get_broadcast_message_ref_count(offset, &rc1);
+      other.get_broadcast_message_ref_count(offset_other, &rc2);
+      set_broadcast_message_ref_count(offset, rc1+rc2);
+    }
+    memcpy(temp + offset_temp, src, gap);
+    offset_temp += gap;
+  }
+  if (offset >= _memory_used) {
+    if (offset_other < other._memory_used) {
+      memcpy(temp + offset_temp, other._memory + offset_other,
+             other._memory_used - offset_other);
+    }
+  } else {
+    assert(offset_other >= other._memory_used);
+    if (offset < _memory_used) {
+      memcpy(temp + offset_temp, _memory + offset, _memory_used - offset);
+    }
+  }
+
+  toku_free(_memory);
+  _memory = temp;
+  _memory_size = new_size;
+  _num_entries += other._num_entries;
+  _memory_usable = toku_malloc_usable_size(_memory);
+}
+
+static int next_power_of_two (int n) {
+    int r = 4096;
+    while (r < n) {
+        r*=2;
+        assert(r>0);
+    }
+    return r;
+}
+
+struct message_buffer::buffer_entry *message_buffer::get_buffer_entry(int32_t offset) const {
+    return (struct buffer_entry *) (_memory + offset);
+}
+
+void message_buffer::enqueue(const ft_msg &msg, bool is_fresh, int32_t *offset) {
+    int need_space_here = msg_memsize_in_buffer(msg);
+    int need_space_total = _memory_used + need_space_here;
+    if (_memory == nullptr || need_space_total > _memory_size) {
+        // resize the buffer to the next power of 2 greater than the needed space
+        int next_2 = next_power_of_two(need_space_total);
+        _resize(next_2);
+    }
+    uint32_t keylen = msg.kdbt()->size;
+    uint32_t datalen = msg.vdbt()->size;
+    struct buffer_entry *entry = get_buffer_entry(_memory_used);
+    entry->type = (unsigned char) msg.type();
+    entry->msn = msg.msn();
+    toku_xids_cpy(&entry->xids_s, msg.xids());
+    entry->is_fresh = is_fresh;
+    unsigned char *e_key = toku_xids_get_end_of_array(&entry->xids_s);
+    entry->keylen = keylen;
+    memcpy(e_key, msg.kdbt()->data, keylen);
+    entry->vallen = datalen;
+    memcpy(e_key + keylen, msg.vdbt()->data, datalen);
+    if (ft_msg_type_applies_all(entry->type)) {
+      memcpy(e_key + keylen + datalen, msg.ref_count_of_broadcast_msg(),
+             sizeof(int));
+    }
     if (offset) {
         *offset = _memory_used;
     }
@@ -207,16 +320,41 @@ bool message_buffer::get_freshness(int32_t offset) const {
     return entry->is_fresh;
 }
 
-ft_msg message_buffer::get_message(int32_t offset, DBT *keydbt, DBT *valdbt) const {
-    struct buffer_entry *entry = get_buffer_entry(offset);
-    uint32_t keylen = entry->keylen;
-    uint32_t vallen = entry->vallen;
-    enum ft_msg_type type = (enum ft_msg_type) entry->type;
-    MSN msn = entry->msn;
-    const XIDS xids = (XIDS) &entry->xids_s;
-    const void *key = toku_xids_get_end_of_array(xids);
-    const void *val = (uint8_t *) key + entry->keylen;
-    return ft_msg(toku_fill_dbt(keydbt, key, keylen), toku_fill_dbt(valdbt, val, vallen), type, msn, xids);
+ft_msg message_buffer::get_message(int32_t offset, DBT *keydbt,
+                                   DBT *valdbt) const {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  uint32_t keylen = entry->keylen;
+  uint32_t vallen = entry->vallen;
+  enum ft_msg_type_raw type = (enum ft_msg_type_raw)entry->type;
+  MSN msn = entry->msn;
+  const XIDS xids = (XIDS)&entry->xids_s;
+  const void *key = toku_xids_get_end_of_array(xids);
+  const void *val = (uint8_t *)key + entry->keylen;
+  ft_msg_type t;
+  t.type = type;
+  t.ref_count = 0xdeadbeef;
+  if (ft_msg_type_applies_all(type)) {
+    uint8_t *pos = (uint8_t *)key + keylen + vallen;
+    t.ref_count = *((int *)pos);
+  }
+  return ft_msg(toku_fill_dbt(keydbt, key, keylen),
+                toku_fill_dbt(valdbt, val, vallen), t, msn, xids);
+}
+
+void message_buffer::get_broadcast_message_ref_count(int32_t offset, int * rc) {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  assert(ft_msg_type_applies_all(entry->type));
+  if (rc != nullptr) {
+    unsigned char *e_key = toku_xids_get_end_of_array(&entry->xids_s);
+    memcpy(rc, e_key + entry->keylen + entry->vallen, sizeof(int));
+  }
+}
+
+void message_buffer::set_broadcast_message_ref_count(int32_t offset, int rc) {
+  struct buffer_entry *entry = get_buffer_entry(offset);
+  assert(ft_msg_type_applies_all(entry->type));
+  unsigned char *e_key = toku_xids_get_end_of_array(&entry->xids_s);
+  memcpy(e_key + entry->keylen + entry->vallen, &rc, sizeof(int));
 }
 
 void message_buffer::get_message_key_msn(int32_t offset, DBT *key, MSN *msn) const {
@@ -236,6 +374,31 @@ int message_buffer::num_entries() const {
 size_t message_buffer::buffer_size_in_use() const {
     return _memory_used;
 }
+
+struct weight_node_size {
+  size_t *accu_weight;
+  weight_node_size(size_t *accu) : accu_weight(accu) {}
+  int operator()(const ft_msg &msg, bool is_fresh) {
+    enum ft_msg_type_raw type = msg.type();
+    int rc;
+    if (ft_msg_type_applies_all(type)) {
+      rc = msg.ref_count_of_broadcast_msg();
+    } else {
+      rc = 1;
+    }
+    *accu_weight += rc * msg_memsize_in_buffer(msg);
+    return 0;
+  }
+};
+
+size_t
+message_buffer::buffer_weighted_size_in_use() const {
+  size_t total_weight = 0;
+  struct weight_node_size wns(&total_weight);
+  iterate(wns);
+  return total_weight;
+}
+
 
 size_t message_buffer::memory_size_in_use() const {
     return sizeof(*this) + _memory_used;
@@ -285,8 +448,11 @@ void message_buffer::serialize_to_wbuf(struct wbuf *wb) const {
 //    iterate(serialize_fn);
 //}
 size_t message_buffer::msg_memsize_in_buffer(const ft_msg &msg) {
-    const uint32_t keylen = msg.kdbt()->size;
-    const uint32_t datalen = msg.vdbt()->size;
-    const size_t xidslen = toku_xids_get_size(msg.xids());
-    return sizeof(struct buffer_entry) + keylen + datalen + xidslen - sizeof(XIDS_S);
+  const uint32_t keylen = msg.kdbt()->size;
+  const uint32_t datalen = msg.vdbt()->size;
+  const size_t xidslen = toku_xids_get_size(msg.xids());
+  size_t basic_size =
+      sizeof(struct buffer_entry) + keylen + datalen + xidslen - sizeof(XIDS_S);
+  return ft_msg_type_applies_all(msg.type()) ? basic_size + size(int)
+                                             : basic_size;
 }

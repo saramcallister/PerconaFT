@@ -195,7 +195,7 @@ struct ftnode_header {
   TXNID _oldest_referenced_xid_known;
   struct ctpair *_ct_pair;
   //broadcast msgs stored in header, appliable to all children
-  off_omt_t _broadcast_list;
+  message_buffer _broadcast_msgs;
   //bloom filter
   //bloom_filter filter;
 };
@@ -279,7 +279,7 @@ public:
   struct ctpair *&ct_pair() {
     return _header._ct_pair;
   }
-  off_omt_t &broadcast_list() { return _header._broadcast_list; }
+  message_buffer &broadcast_list() { return _header._broadcast_msgs; }
 };
 typedef struct ftnode *FTNODE;
 
@@ -319,6 +319,7 @@ typedef toku::omt<int32_t, int32_t, true> marked_off_omt_t;
 
 // data of an available partition of a nonleaf ftnode
 struct ftnode_nonleaf_childinfo {
+    MSN most_recent_flushed_broadcast_msg;
     message_buffer msg_buffer;
 //    off_omt_t broadcast_list;
     marked_off_omt_t fresh_message_tree;

@@ -254,7 +254,8 @@ serialize_ftnode_partition_size (FTNODE node, int i)
         // number of offsets (4 bytes) plus an array of 4 byte offsets, for each message tree
         result += (4 + (4 * bnc->fresh_message_tree.size()));
         result += (4 + (4 * bnc->stale_message_tree.size()));
-        result += (4 + (4 * bnc->broadcast_list.size()));
+	result += sizeof(MSN);
+        //result += (4 + (4 * bnc->broadcast_list.size()));
     }
     else {
         result += 4 + bn_data::HEADER_LENGTH; // n_entries in buffer table + basement header
@@ -298,6 +299,7 @@ static void serialize_child_buffer(NONLEAF_CHILDINFO bnc, struct wbuf *wb) {
     unsigned char ch = FTNODE_PARTITION_MSG_BUFFER;
     wbuf_nocrc_char(wb, ch);
 
+    wbuf_nocrc_uint64_t(wb, bnc->most_recent_flushed_broadcast_msg.msn);
     // serialize the message buffer
     bnc->msg_buffer.serialize_to_wbuf(wb);
 
@@ -314,8 +316,9 @@ static void serialize_child_buffer(NONLEAF_CHILDINFO bnc, struct wbuf *wb) {
     bnc->stale_message_tree.iterate<struct wbuf, wbuf_write_offset>(wb);
 
     // broadcast
-    wbuf_nocrc_int(wb, bnc->broadcast_list.size());
-    bnc->broadcast_list.iterate<struct wbuf, wbuf_write_offset>(wb);
+//    wbuf_nocrc_int(wb, bnc->broadcast_list.size());
+//    bnc->broadcast_list.iterate<struct wbuf, wbuf_write_offset>(wb);
+
 }
 
 //
@@ -425,10 +428,27 @@ serialize_ftnode_info_size(FTNODE node)
     if (node->height() > 0) {
         retval += node->n_children()*8; // child blocknum's
     }
+    retval += (4 + node->broadcast_list().buffer_size_in_use());
     retval += 4; // checksum
     return retval;
 }
 
+static uint32_t serialize_ftnode_info_weighted_size(FTNODE node) {
+  uint32_t retval = 0;
+  retval += 8; // max_msn_applied_to_node_on_disk
+  retval += 4; // nodesize
+  retval += 4; // flags
+  retval += 4; // height;
+  retval += 8; // oldest_referenced_xid_known
+  retval += node->pivotkeys().serialized_size();
+  retval += (node->n_children() - 1) * 4; // encode length of each pivot
+  if (node->height() > 0) {
+    retval += node->n_children() * 8; // child blocknum's
+  }
+  retval += (4 + node->broadcast_list().buffer_weighted_size_in_use());
+  retval += 4; // checksum
+  return retval;
+}
 static void serialize_ftnode_info(FTNODE node, SUB_BLOCK sb) {
     // Memory must have been allocated by our caller.
     invariant(sb->uncompressed_size > 0);
@@ -452,6 +472,7 @@ static void serialize_ftnode_info(FTNODE node, SUB_BLOCK sb) {
         }
     }
 
+    node->broadcast_list().serialize_to_wbuf(wb);
     uint32_t end_to_end_checksum = toku_x1764_memory(sb->uncompressed_ptr, wbuf_get_woffset(&wb));
     wbuf_nocrc_int(&wb, end_to_end_checksum);
     invariant(wb.ndone == wb.size);
@@ -474,6 +495,24 @@ toku_serialize_ftnode_size (FTNODE node) {
     }
     return result;
 }
+
+
+unsigned int
+toku_serialize_ftnode_weighted_size (FTNODE node) {
+    unsigned int result = 0;
+    //
+    // As of now, this seems to be called if and only if the entire node is supposed
+    // to be in memory, so we will assert it.
+    //
+    toku_ftnode_assert_fully_in_memory(node);
+    result += serialize_node_header_size(node);
+    result += serialize_ftnode_info_weighted_size(node);
+    for (int i = 0; i < node->n_children(); i++) {
+        result += serialize_ftnode_partition_size(node,i);
+    }
+    return result;
+}
+
 
 struct serialize_times {
     tokutime_t serialize_time;
@@ -854,38 +893,45 @@ int toku_serialize_ftnode_to(int fd,
 }
 
 static void
-sort_and_steal_offset_arrays(NONLEAF_CHILDINFO bnc,
-                             const toku::comparator &cmp,
+sort_and_steal_offset_arrays(NONLEAF_CHILDINFO bnc, const toku::comparator &cmp,
                              int32_t **fresh_offsets, int32_t nfresh,
-                             int32_t **stale_offsets, int32_t nstale,
-                             int32_t **broadcast_offsets, int32_t nbroadcast) {
-    // We always have fresh / broadcast offsets (even if they are empty)
-    // but we may not have stale offsets, in the case of v13 upgrade.
-    invariant(fresh_offsets != nullptr);
-    invariant(broadcast_offsets != nullptr);
-    invariant(cmp.valid());
+                             int32_t **stale_offsets, int32_t nstale //,
+                             // int32_t **broadcast_offsets, int32_t nbroadcast
+                             ) {
+  // We always have fresh / broadcast offsets (even if they are empty)
+  // but we may not have stale offsets, in the case of v13 upgrade.
+  invariant(fresh_offsets != nullptr);
+  //    invariant(broadcast_offsets != nullptr);
+  invariant(cmp.valid());
 
-    typedef toku::sort<int32_t, const struct toku_msg_buffer_key_msn_cmp_extra, toku_msg_buffer_key_msn_cmp> msn_sort;
+  typedef toku::sort<int32_t, const struct toku_msg_buffer_key_msn_cmp_extra,
+                     toku_msg_buffer_key_msn_cmp>
+      msn_sort;
 
-    const int32_t n_in_this_buffer = nfresh + nstale + nbroadcast;
-    struct toku_msg_buffer_key_msn_cmp_extra extra(cmp, &bnc->msg_buffer);
-    msn_sort::mergesort_r(*fresh_offsets, nfresh, extra);
-    bnc->fresh_message_tree.destroy();
-    bnc->fresh_message_tree.create_steal_sorted_array(fresh_offsets, nfresh, n_in_this_buffer);
-    if (stale_offsets) {
-        msn_sort::mergesort_r(*stale_offsets, nstale, extra);
-        bnc->stale_message_tree.destroy();
-        bnc->stale_message_tree.create_steal_sorted_array(stale_offsets, nstale, n_in_this_buffer);
-    }
-    bnc->broadcast_list.destroy();
-    bnc->broadcast_list.create_steal_sorted_array(broadcast_offsets, nbroadcast, n_in_this_buffer);
+  const int32_t n_in_this_buffer = nfresh + nstale + nbroadcast;
+  struct toku_msg_buffer_key_msn_cmp_extra extra(cmp, &bnc->msg_buffer);
+  msn_sort::mergesort_r(*fresh_offsets, nfresh, extra);
+  bnc->fresh_message_tree.destroy();
+  bnc->fresh_message_tree.create_steal_sorted_array(fresh_offsets, nfresh,
+                                                    n_in_this_buffer);
+  if (stale_offsets) {
+    msn_sort::mergesort_r(*stale_offsets, nstale, extra);
+    bnc->stale_message_tree.destroy();
+    bnc->stale_message_tree.create_steal_sorted_array(stale_offsets, nstale,
+                                                      n_in_this_buffer);
+  }
+  //    bnc->broadcast_list.destroy();
+  //    bnc->broadcast_list.create_steal_sorted_array(broadcast_offsets,
+  //    nbroadcast, n_in_this_buffer);
 }
 
 static MSN
 deserialize_child_buffer_v13(FT ft, NONLEAF_CHILDINFO bnc, struct rbuf *rb) {
     // We skip 'stale' offsets for upgraded nodes.
-    int32_t nfresh = 0, nbroadcast = 0;
-    int32_t *fresh_offsets = nullptr, *broadcast_offsets = nullptr;
+    int32_t nfresh = 0;
+    // int32_t nbroadcast = 0;
+    int32_t *fresh_offsets = nullptr;
+    // int32_t *broadcast_offsets = nullptr;
 
     // Only sort buffers if we have a valid comparison function. In certain scenarios,
     // like deserialie_ft_versioned() or tokuftdump, we'll need to deserialize ftnodes
@@ -893,16 +939,19 @@ deserialize_child_buffer_v13(FT ft, NONLEAF_CHILDINFO bnc, struct rbuf *rb) {
     // properly sorted. This is very ugly, but correct.
     const bool sort = ft->cmp.valid();
 
+    bnc->most_recent_flushed_broadcast_msg.msn = rbuf_ma_uint64_t(rb);
+    
     MSN highest_msn_in_this_buffer =
         bnc->msg_buffer.deserialize_from_rbuf_v13(rb, &ft->h->highest_unused_msn_for_upgrade,
                                                   sort ? &fresh_offsets : nullptr, &nfresh,
-                                                  sort ? &broadcast_offsets : nullptr, &nbroadcast);
+                                                  //sort ? &broadcast_offsets : nullptr, &nbroadcast);
+                                                  nullptr, nullptr);
 
     if (sort) {
-        sort_and_steal_offset_arrays(bnc, ft->cmp,
-                                     &fresh_offsets, nfresh,
-                                     nullptr, 0, // no stale offsets
-                                     &broadcast_offsets, nbroadcast);
+      sort_and_steal_offset_arrays(bnc, ft->cmp, &fresh_offsets, nfresh,
+                                   nullptr, 0 //, // no stale offsets
+                                   //             &broadcast_offsets, nbroadcast
+                                   );
     }
 
     return highest_msn_in_this_buffer;
@@ -910,32 +959,40 @@ deserialize_child_buffer_v13(FT ft, NONLEAF_CHILDINFO bnc, struct rbuf *rb) {
 
 static void
 deserialize_child_buffer_v26(NONLEAF_CHILDINFO bnc, struct rbuf *rb, const toku::comparator &cmp) {
-    int32_t nfresh = 0, nstale = 0, nbroadcast = 0;
-    int32_t *fresh_offsets, *stale_offsets, *broadcast_offsets;
+  int32_t nfresh = 0, nstale = 0;
+//  int32_t nbroadcast = 0;
+  int32_t *fresh_offsets, *stale_offsets;
+ // int32_t broadcast_offsets;
 
-    // Only sort buffers if we have a valid comparison function. In certain scenarios,
-    // like deserialie_ft_versioned() or tokuftdump, we'll need to deserialize ftnodes
-    // for simple inspection and don't actually require that the message buffers are
-    // properly sorted. This is very ugly, but correct.
-    const bool sort = cmp.valid();
+  // Only sort buffers if we have a valid comparison function. In certain
+  // scenarios,
+  // like deserialie_ft_versioned() or tokuftdump, we'll need to deserialize
+  // ftnodes
+  // for simple inspection and don't actually require that the message buffers
+  // are
+  // properly sorted. This is very ugly, but correct.
+  const bool sort = cmp.valid();
 
-    // read in the message buffer
-    bnc->msg_buffer.deserialize_from_rbuf(rb,
-                                          sort ? &fresh_offsets : nullptr, &nfresh,
-                                          sort ? &stale_offsets : nullptr, &nstale,
-                                          sort ? &broadcast_offsets : nullptr, &nbroadcast);
+  bnc->most_recent_flushed_broadcast_msg.msn = rbuf_ma_uint64_t(rb);
+  // read in the message buffer
+  bnc->msg_buffer.deserialize_from_rbuf(
+      rb, sort ? &fresh_offsets : nullptr, &nfresh,
+      sort ? &stale_offsets : nullptr, &nstale,
+      //sort ? &broadcast_offsets : nullptr, &nbroadcast);
+      nullptr, nullptr);
 
-    if (sort) {
-        sort_and_steal_offset_arrays(bnc, cmp,
-                                     &fresh_offsets, nfresh,
-                                     &stale_offsets, nstale,
-                                     &broadcast_offsets, nbroadcast);
-    }
+  if (sort) {
+    sort_and_steal_offset_arrays(
+        bnc, cmp, &fresh_offsets, nfresh, &stale_offsets, nstale //,
+        //                                     &broadcast_offsets, nbroadcast
+        );
+  }
 }
 
 static void
 deserialize_child_buffer(NONLEAF_CHILDINFO bnc, struct rbuf *rb) {
     // read in the message buffer
+    bnc->most_recent_flushed_broadcast_msg.msn = rbuf_ma_uint64_t(rb);
     bnc->msg_buffer.deserialize_from_rbuf(rb,
                                           nullptr, nullptr,  // fresh_offsets, nfresh,
                                           nullptr, nullptr,  // stale_offsets, nstale,
@@ -954,19 +1011,19 @@ deserialize_child_buffer(NONLEAF_CHILDINFO bnc, struct rbuf *rb) {
         stale_offsets[i] = rbuf_int(rb);
     }
 
-    int32_t nbroadcast = rbuf_int(rb);
-    int32_t *XMALLOC_N(nbroadcast, broadcast_offsets);
-    for (int i = 0; i < nbroadcast; i++) {
-        broadcast_offsets[i] = rbuf_int(rb);
-    }
+    //    int32_t nbroadcast = rbuf_int(rb);
+    //   int32_t *XMALLOC_N(nbroadcast, broadcast_offsets);
+    //    for (int i = 0; i < nbroadcast; i++) {
+    //        broadcast_offsets[i] = rbuf_int(rb);
+    //    }
 
     // build OMTs out of each offset array
     bnc->fresh_message_tree.destroy();
     bnc->fresh_message_tree.create_steal_sorted_array(&fresh_offsets, nfresh, nfresh);
     bnc->stale_message_tree.destroy();
     bnc->stale_message_tree.create_steal_sorted_array(&stale_offsets, nstale, nstale);
-    bnc->broadcast_list.destroy();
-    bnc->broadcast_list.create_steal_sorted_array(&broadcast_offsets, nbroadcast, nbroadcast);
+//    bnc->broadcast_list.destroy();
+//   bnc->broadcast_list.create_steal_sorted_array(&broadcast_offsets, nbroadcast, nbroadcast);
 }
 
 // dump a buffer to stderr
@@ -1033,27 +1090,30 @@ BASEMENTNODE toku_create_empty_bn_no_buffer(void) {
 }
 
 NONLEAF_CHILDINFO toku_create_empty_nl(void) {
-    NONLEAF_CHILDINFO XMALLOC(cn);
-    cn->msg_buffer.create();
-    cn->fresh_message_tree.create_no_array();
-    cn->stale_message_tree.create_no_array();
-    cn->broadcast_list.create_no_array();
-    memset(cn->flow, 0, sizeof cn->flow);
-    return cn;
+  NONLEAF_CHILDINFO XMALLOC(cn);
+  cn->most_recent_flushed_broadcast_msg.msn = 0;
+  cn->msg_buffer.create();
+  cn->fresh_message_tree.create_no_array();
+  cn->stale_message_tree.create_no_array();
+//  cn->broadcast_list.create_no_array();
+  memset(cn->flow, 0, sizeof cn->flow);
+  return cn;
 }
 
 // must clone the OMTs, since we serialize them along with the message buffer
 NONLEAF_CHILDINFO toku_clone_nl(NONLEAF_CHILDINFO orig_childinfo) {
-    NONLEAF_CHILDINFO XMALLOC(cn);
-    cn->msg_buffer.clone(&orig_childinfo->msg_buffer);
-    cn->fresh_message_tree.create_no_array();
-    cn->fresh_message_tree.clone(orig_childinfo->fresh_message_tree);
-    cn->stale_message_tree.create_no_array();
-    cn->stale_message_tree.clone(orig_childinfo->stale_message_tree);
-    cn->broadcast_list.create_no_array();
-    cn->broadcast_list.clone(orig_childinfo->broadcast_list);
-    memset(cn->flow, 0, sizeof cn->flow);
-    return cn;
+  NONLEAF_CHILDINFO XMALLOC(cn);
+  cn->most_recent_flushed_broadcast_msg.msn =
+      orig_childinfo->most_recent_flushed_broadcast_msg.msn;
+  cn->msg_buffer.clone(&orig_childinfo->msg_buffer);
+  cn->fresh_message_tree.create_no_array();
+  cn->fresh_message_tree.clone(orig_childinfo->fresh_message_tree);
+  cn->stale_message_tree.create_no_array();
+  cn->stale_message_tree.clone(orig_childinfo->stale_message_tree);
+  //    cn->broadcast_list.create_no_array();
+  //    cn->broadcast_list.clone(orig_childinfo->broadcast_list);
+  memset(cn->flow, 0, sizeof cn->flow);
+  return cn;
 }
 
 void destroy_basement_node (BASEMENTNODE bn)
@@ -1067,7 +1127,7 @@ void destroy_nonleaf_childinfo (NONLEAF_CHILDINFO nl)
     nl->msg_buffer.destroy();
     nl->fresh_message_tree.destroy();
     nl->stale_message_tree.destroy();
-    nl->broadcast_list.destroy();
+  //  nl->broadcast_list.destroy();
     toku_free(nl);
 }
 
@@ -1269,6 +1329,10 @@ static int deserialize_ftnode_info(struct sub_block *sb, FTNODE node) {
             BP_WORKDONE(node, i) = 0;
         }
     }
+    node->broadcast_list().deserialize_from_rbuf(
+        rb, nullptr, nullptr, // fresh_offsets, nfresh,
+        nullptr, nullptr,     // stale_offsets, nstale,
+        nullptr, nullptr);    // broadcast_offsets, nbroadcast
 
     // make sure that all the data was read
     if (data_size != rb.ndone) {
@@ -1704,7 +1768,8 @@ static int deserialize_ftnode_header_from_rbuf_if_small_enough(
     }
 
     XMALLOC_N(node->n_children(), node->bp());
-    XMALLOC_N(node->n_children(), node->children_blocknum());
+    if (node->height > 0)
+      XMALLOC_N(node->n_children(), node->children_blocknum());
     XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
     for (int i=0; i<node->n_children(); i++) {
@@ -1871,7 +1936,8 @@ cleanup:
         if (node) {
             toku_free(*ndd);
             toku_free(node->bp());
-            toku_free(node->children_blocknum());
+            if (node->height > 0)
+              toku_free(node->children_blocknum());
             toku_free(node);
         }
     }
@@ -2368,7 +2434,8 @@ static int deserialize_ftnode_from_rbuf(FTNODE *ftnode,
     node->build_id() = rbuf_int(rb);
     node->n_children() = rbuf_int(rb);
     XMALLOC_N(node->n_children(), node->bp());
-    XMALLOC_N(node->n_children(), node->children_blocknum());
+    if (node->height > 0)
+      XMALLOC_N(node->n_children(), node->children_blocknum());
     XMALLOC_N(node->n_children(), *ndd);
     // read the partition locations
     for (int i=0; i<node->n_children(); i++) {
@@ -2554,7 +2621,10 @@ cleanup:
         // create tools that use this function to search for errors in
         // the FT, then we will leak memory.
         if (node) {
-            toku_free(node);
+          toku_free(node->bp());
+          if (node->height > 0)
+            toku_free(node->children_blocknum());
+          toku_free(node);
         }
     }
     return r;

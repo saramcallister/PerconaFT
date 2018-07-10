@@ -139,7 +139,7 @@ int toku_testsetup_get_sersize(FT_HANDLE ft_handle, BLOCKNUM diskoff) // Return 
         );
     assert(r==0);
     FTNODE CAST_FROM_VOIDP(node, node_v);
-    int size = toku_serialize_ftnode_size(node);
+    int size = toku_serialize_ftnode_weighted_size(node);
     toku_unpin_ftnode(ft_handle->ft, node);
     return size;
 }

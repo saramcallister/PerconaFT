@@ -61,21 +61,23 @@ void toku_initialize_empty_ftnode(FTNODE n, BLOCKNUM blocknum, int height, int n
     n->bp() = 0;
     n->n_children() = num_children;
     n->oldest_referenced_xid_known() = TXNID_NONE;
+    n->broadcast_list().create();
 
     if (num_children > 0) {
+      if (height > 0)
         XMALLOC_N(num_children, n->children_blocknum());
-        XMALLOC_N(num_children, n->bp());
-        for (int i = 0; i < num_children; i++) {
-            BP_BLOCKNUM(n,i).b=0;
-            BP_STATE(n,i) = PT_INVALID;
-            BP_WORKDONE(n,i) = 0;
-            BP_INIT_TOUCHED_CLOCK(n, i);
-            set_BNULL(n,i);
-            if (height > 0) {
-                set_BNC(n, i, toku_create_empty_nl());
-            } else {
-                set_BLB(n, i, toku_create_empty_bn());
-            }
+      XMALLOC_N(num_children, n->bp());
+      for (int i = 0; i < num_children; i++) {
+        BP_BLOCKNUM(n, i).b = 0;
+        BP_STATE(n, i) = PT_INVALID;
+        BP_WORKDONE(n, i) = 0;
+        BP_INIT_TOUCHED_CLOCK(n, i);
+        set_BNULL(n, i);
+        if (height > 0) {
+          set_BNC(n, i, toku_create_empty_nl());
+        } else {
+          set_BLB(n, i, toku_create_empty_bn());
+        }
         }
     }
     n->dirty() = 1;  // special case exception, it's okay to mark as dirty because the basements are empty
@@ -106,7 +108,9 @@ void toku_destroy_ftnode_internals(FTNODE node) {
         }
         set_BNULL(node, i);
     }
-    toku_free(node->children_blocknum());
+    node->broadcast_list().destroy();
+    if (node->height > 0) 
+      toku_free(node->children_blocknum());
     toku_free(node->bp());
     node->bp() = NULL;
 }
@@ -176,16 +180,20 @@ BASEMENTNODE toku_detach_bn(FTNODE node, int childnum) {
 // 
 // Orthopush
 //
+typedef struct offset_buffer_papir {
+	uint32_t offset;
+	message_buffer * buffer;
+} offset_buffer_pair;
 
 struct store_msg_buffer_offset_extra {
-    int32_t *offsets;
+    offset_buffer_pair *offset_buffer_pairs;
     int i;
 };
 
 int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struct store_msg_buffer_offset_extra *const extra) __attribute__((nonnull(3)));
 int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struct store_msg_buffer_offset_extra *const extra)
 {
-    extra->offsets[extra->i] = offset;
+    extra->offset_buffer_pairs[extra->i].offset = offset;
     extra->i++;
     return 0;
 }
@@ -195,12 +203,16 @@ int store_msg_buffer_offset(const int32_t &offset, const uint32_t UU(idx), struc
  * figure out the MSN of each message, and compare those MSNs.  Returns 1,
  * 0, or -1 if a is larger than, equal to, or smaller than b.
  */
-int msg_buffer_offset_msn_cmp(message_buffer &msg_buffer, const int32_t &ao, const int32_t &bo);
-int msg_buffer_offset_msn_cmp(message_buffer &msg_buffer, const int32_t &ao, const int32_t &bo)
+int msg_buffer_offset_msn_cmp(message_buffer & UU(msg_buffer), const offset_buffer_pair & ao, const offset_buffer_pair & bo);
+int msg_buffer_offset_msn_cmp(message_buffer & UU(msg_buffer), const offset_buffer_pair & ao, const offset_buffer_pair  &bo)
 {
     MSN amsn, bmsn;
-    msg_buffer.get_message_key_msn(ao, nullptr, &amsn);
-    msg_buffer.get_message_key_msn(bo, nullptr, &bmsn);
+    int32_t a_off = ao.offset;
+    int32_t b_off = bo.offset;
+    message_buffer * a_buf = ao.buffer;
+    message_buffer * b_buf = bo.buffer;
+    a_buf->get_message_key_msn(a_off, nullptr, &amsn);
+    b_buf->get_message_key_msn(b_off, nullptr, &bmsn);
     if (amsn.msn > bmsn.msn) {
         return +1;
     }
@@ -383,6 +395,24 @@ find_bounds_within_message_tree(
 // apply the message to the basement node.  We treat the bounds as minus
 // or plus infinity respectively if they are NULL.  Do not mark the node
 // as dirty (preserve previous state of 'dirty' bit).
+struct broadcast_msgs_applicable_to_bnc {
+  MSN most_recent_flushed_msn;
+  int32_t *offsets;
+  int *i;
+  int32_t current_off;
+  broadcast_msgs_applicable_to_bnc(MSN msn, int *num, int32_t *offs)
+      : most_recent_flushed_msn(msn), i(num), offsets(offs) {
+    *i = 0;
+  }
+  int operator(const ft_msg &msg, bool is_fresh, int32_t current_off) {
+    if (msg.msn() > most_recent_flushed_msn) {
+      offsets[*i] = current_off;
+      *i++;
+    }
+    return 0;
+  }
+};
+
 static void bnc_apply_messages_to_basement_node(
     FT_HANDLE t,      // used for comparison function
     FTNODE node,
@@ -429,55 +459,64 @@ static void bnc_apply_messages_to_basement_node(
     // 1. broadcast messages and anything else, or a mix of fresh and stale
     // 2. only fresh messages
     // 3. only stale messages
-    if (node->broadcast_list().size() > 0 ||
+
+    size_t max_size = node->broadcast_list().num_entries();
+    int32_t *offsets;
+    int broadcast_size;
+    XMALLOC_N(max_size, offsets);
+    struct broadcast_msgs_applicable_to_bnc bmatc(
+        bnc->most_recent_flushed_broadcast_msg, &broadcast_size, offsets);
+    node->broadcast_list.iterate2(bmatc);
+    if (broadcast_size > 0 ||
         (stale_lbi != stale_ube && fresh_lbi != fresh_ube)) {
-        // We have messages in multiple trees, so we grab all
-        // the relevant messages' offsets and sort them by MSN, then apply
-        // them in MSN order.
-        const int buffer_size =
-            ((stale_ube - stale_lbi) + (fresh_ube - fresh_lbi) +
-             node->broadcast_list().size());
-        toku::scoped_malloc offsets_buf(buffer_size * sizeof(int32_t));
-        int32_t *offsets = reinterpret_cast<int32_t *>(offsets_buf.get());
-        struct store_msg_buffer_offset_extra sfo_extra = {.offsets = offsets,
-                                                          .i = 0};
+      // We have messages in multiple trees, so we grab all
+      // the relevant messages' offsets and sort them by MSN, then apply
+      // them in MSN order.
+      const int buffer_size =
+          ((stale_ube - stale_lbi) + (fresh_ube - fresh_lbi) +
+	broadcast_size;
+      toku::scoped_malloc offsets_buf(buffer_size * sizeof(offset_buffer_pair));
+      offset_buffer_pair *offset_buffer_pairs = reinterpret_cast<offset_buffer_pair *>(offsets_buf.get());
+      struct store_msg_buffer_offset_extra sfo_extra = {.offset_buffer_pairs = offset_buffer_pairs,
+                                                        .i = 0};
 
-        // Populate offsets array with offsets to stale messages
-        r = bnc->stale_message_tree
-                .iterate_on_range<struct store_msg_buffer_offset_extra,
-                                  store_msg_buffer_offset>(
-                    stale_lbi, stale_ube, &sfo_extra);
-        assert_zero(r);
+      // Populate offsets array with offsets to stale messages
+      r = bnc->stale_message_tree.iterate_on_range<
+          struct store_msg_buffer_offset_extra, store_msg_buffer_offset>(
+          stale_lbi, stale_ube, &sfo_extra);
+      assert_zero(r);
 
-        // Then store fresh offsets, and mark them to be moved to stale later.
-        r = bnc->fresh_message_tree
-                .iterate_and_mark_range<struct store_msg_buffer_offset_extra,
-                                        store_msg_buffer_offset>(
-                    fresh_lbi, fresh_ube, &sfo_extra);
-        assert_zero(r);
+      // Then store fresh offsets, and mark them to be moved to stale later.
+      r = bnc->fresh_message_tree.iterate_and_mark_range<
+          struct store_msg_buffer_offset_extra, store_msg_buffer_offset>(
+          fresh_lbi, fresh_ube, &sfo_extra);
+      assert_zero(r);
 
-        // Store offsets of all broadcast messages.
-        r = node->broadcast_list().iterate<struct store_msg_buffer_offset_extra,
-                                        store_msg_buffer_offset>(&sfo_extra);
-        assert_zero(r);
-        invariant(sfo_extra.i == buffer_size);
+      // set up the message buffer for sfo_extra
+      int idx;
+      for(idx = 0; idx < sfo_extra.i; idx++) 
+      	sfo_extra.offset_buffer_pairs[idx].buffer = &bnc->msg_buffer;
+      // Store offsets of all broadcast messages.
+      r = node->broadcast_list()
+              .iterate<struct store_msg_buffer_offset_extra,
+                       store_msg_buffer_offset>(&sfo_extra);
+      assert_zero(r);
+      for(; idx < sfo_extra.i; idx++) 
+      	sfo_extra.offset_buffer_pairs[idx].buffer = &node->broadcast_list();
+      invariant(sfo_extra.i == buffer_size);
 
-        // Sort by MSN.
-        toku::sort<int32_t, message_buffer, msg_buffer_offset_msn_cmp>::
-            mergesort_r(offsets, buffer_size, bnc->msg_buffer);
+      // Sort by MSN.
+      toku::sort<offset_buffer_pair, message_buffer,
+                 msg_buffer_offset_msn_cmp>::mergesort_r(offset_buffer_pairs, buffer_size,
+                                                         bnc->msg_buffer);
 
-        // Apply the messages in MSN order.
-        for (int i = 0; i < buffer_size; ++i) {
-            *msgs_applied = true;
-            do_bn_apply_msg(t,
-                            bn,
-                            &bnc->msg_buffer,
-                            offsets[i],
-                            gc_info,
-                            &workdone_this_ancestor,
-                            &stats_delta,
-                            &logical_rows_delta);
-        }
+      // Apply the messages in MSN order.
+      for (int i = 0; i < buffer_size; ++i) {
+      *msgs_applied = true;
+      do_bn_apply_msg(t, bn, offset_buffer_pairs[i].buffer, offset_buffer_pairs[i].offset, gc_info,
+                      &workdone_this_ancestor, &stats_delta,
+                      &logical_rows_delta);
+      }
     } else if (stale_lbi == stale_ube) {
         // No stale messages to apply, we just apply fresh messages, and mark
         // them to be moved to stale later.
@@ -517,7 +556,7 @@ static void bnc_apply_messages_to_basement_node(
                     stale_lbi, stale_ube, &iter_extra);
         assert_zero(r);
     }
-    //
+    toku_free(offsets);
     // update stats
     //
     if (workdone_this_ancestor > 0) {
@@ -1037,7 +1076,7 @@ enum reactivity toku_ftnode_get_leaf_reactivity(FTNODE node, uint32_t nodesize) 
     enum reactivity re = RE_STABLE;
     toku_ftnode_assert_fully_in_memory(node);
     paranoid_invariant(node->height()==0);
-    unsigned int size = toku_serialize_ftnode_size(node);
+    unsigned int size = toku_serialize_ftnode_weighted_size(node);
     if (size > nodesize && toku_ftnode_leaf_num_entries(node) > 1) {
         re = RE_FISSIBLE;
     } else if ((size*4) < nodesize && !BLB_SEQINSERT(node, node->n_children()-1)) {
@@ -1074,7 +1113,7 @@ unsigned int toku_bnc_nbytesinbuf(NONLEAF_CHILDINFO bnc) {
 // Return true if the size of the buffers plus the amount of work done is large enough.
 // Return false if there is nothing to be flushed (the buffers empty).
 bool toku_ftnode_nonleaf_is_gorged(FTNODE node, uint32_t nodesize) {
-    uint64_t size = toku_serialize_ftnode_size(node);
+    uint64_t size = toku_serialize_ftnode_weighted_size(node);
 
     bool buffers_are_empty = true;
     toku_ftnode_assert_fully_in_memory(node);
@@ -1726,8 +1765,8 @@ static void bnc_insert_msg(FTNODE node, NONLEAF_CHILDINFO bnc, const ft_msg &msg
         }
     } else {
         invariant(ft_msg_type_applies_all(type) || ft_msg_type_does_nothing(type));
-        const uint32_t idx = node->broadcast_list().size();
-        r = node->broadcast_list().insert_at(offset, idx);
+	msg.ref_count_of_broadcast_msg() = node->n_children; //ref count of a broadcast msg
+        r = node->broadcast_list().enqueue(msg, is_fresh, &offset);
         assert_zero(r);
     }
 }
