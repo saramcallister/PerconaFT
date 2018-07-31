@@ -665,6 +665,7 @@ void toku_ftnode_clone_callback(void *value_data,
              node->n_children() *
                  sizeof((cloned_node->children_blocknum())[0]));
       cloned_node->broadcast_list().clone(&node->broadcast_list());
+      cloned_node->create_bloom_filter();
       cloned_node->clone_bloom_filter(&node->bloom_filter());
     }
     XMALLOC_N(node->n_children(), cloned_node->bp());
@@ -3569,10 +3570,10 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
 // Effect: Search in a node's child.  Searches are read-only now (at least as far as the hardcopy is concerned).
 {
     struct ancestors next_ancestors;
-    if(node->is_key_in_bloom_filter(search->k)) {
-        next_ancestors = {node, childnum, ancestors};
+    if(search->k && (!node->is_key_in_bloom_filter(search->k))) {
+        next_ancestors = {node, childnum, false, ancestors};
     } else {
-        next_ancestors = {node, -1, ancestors}; 
+        next_ancestors = {node, childnum, true, ancestors}; 
     }
     BLOCKNUM childblocknum = BP_BLOCKNUM(node,childnum);
     uint32_t fullhash = compute_child_fullhash(ft_handle->ft->cf, node, childnum);
@@ -3765,7 +3766,8 @@ ft_search_node(
     //
     // At this point, we must have the necessary partition available to continue the search
     //
-    assert(BP_STATE(node,child_to_search) == PT_AVAIL);
+    assert(BP_STATE(node,child_to_search) == PT_AVAIL ||
+	BP_STATE(node, child_to_search) == PT_ON_DISK);
     const pivot_bounds next_bounds = bounds.next_bounds(node, child_to_search);
     if (node->height() > 0) {
         r = ft_search_child(
@@ -4137,7 +4139,7 @@ static int toku_ft_keysrange_internal(
         }
     } else {
         // do the child.
-        struct ancestors next_ancestors = {node, left_child_number, ancestors};
+        struct ancestors next_ancestors = {node, left_child_number, true, ancestors};
         BLOCKNUM childblocknum = BP_BLOCKNUM(node, left_child_number);
         uint32_t fullhash =
             compute_child_fullhash(ft_handle->ft->cf, node, left_child_number);
@@ -4427,7 +4429,7 @@ static int get_key_after_bytes_in_subtree(FT_HANDLE ft_h, FT ft, FTNODE node, UN
 
 static int get_key_after_bytes_in_child(FT_HANDLE ft_h, FT ft, FTNODE node, UNLOCKERS unlockers, ANCESTORS ancestors, const pivot_bounds &bounds, ftnode_fetch_extra *bfe, ft_search *search, int childnum, uint64_t subtree_bytes, const DBT *start_key, uint64_t skip_len, void (*callback)(const DBT *, uint64_t, void *), void *cb_extra, uint64_t *skipped) {
     int r;
-    struct ancestors next_ancestors = {node, childnum, ancestors};
+    struct ancestors next_ancestors = {node, childnum, true, ancestors};
     BLOCKNUM childblocknum = BP_BLOCKNUM(node, childnum);
     uint32_t fullhash = compute_child_fullhash(ft->cf, node, childnum);
     FTNODE child;

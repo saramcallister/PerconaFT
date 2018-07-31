@@ -1388,8 +1388,9 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
             node,
             bfe->search
             );
-	if(!node->is_key_in_bloom_filter(bfe->search->k))
-        //if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
+        if (node->height() > 0 && bfe->search->k &&
+            !node->is_key_in_bloom_filter(bfe->search->k))
+          // if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
           bfe->type = ftnode_fetch_none;
     } else if (bfe->type == ftnode_fetch_keymatch) {
         // we do not take into account prefetching yet

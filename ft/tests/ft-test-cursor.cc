@@ -42,7 +42,7 @@ static const char *fname = TOKU_TEST_FILENAME;
 
 static TOKUTXN const null_txn = 0;
 
-static int test_cursor_debug = 0;
+static int test_cursor_debug = 1;
 
 static int test_ft_cursor_keycompare(DB *desc __attribute__((unused)), const DBT *a, const DBT *b) {
     return toku_keycompare(a->data, a->size, b->data, b->size);

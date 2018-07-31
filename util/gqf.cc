@@ -1697,8 +1697,17 @@ uint64_t qf_use(QF* qf, void* buffer, uint64_t buffer_len, enum lockingmode
 void *qf_destroy(QF *qf)
 {
 	assert(qf->runtimedata != NULL);
+	
+	if(qf->runtimedata->f_info.filepath) {
+		free(qf->runtimedata->f_info.filepath);
+		qf->runtimedata->f_info.filepath = NULL;
+	}
+	//if(qf->runtimedata->locks) {
+//		free((void*)qf->runtimedata->locks);
+//		qf->runtimedata->locks = NULL;
+//	}
 	free(qf->runtimedata);
-
+	qf->runtimedata = NULL;
 	return (void*)qf->metadata;
 }
 
@@ -1771,6 +1780,37 @@ void qf_reset(QF *qf)
 #endif
 }
 
+static bool _qf_insert_internal(QF *qf, uint64_t key, uint64_t value, uint64_t count) {
+  // We fill up the CQF up to 95% load factor.
+  // This is a very conservative check.
+  if (qf->metadata->noccupied_slots >= qf->metadata->xnslots * 0.95) {
+    if (qf->metadata->auto_resize) {
+      fprintf(stdout, "Resizing the CQF.\n");
+      qf_resize_malloc(qf, qf->metadata->nslots * 2);
+    } else
+      return false;
+  }
+  if (count == 0)
+    return true;
+
+  if (qf->metadata->hash_mode == DEFAULT) {
+  #if 0
+    void *p_len_and_key = (void *)key;
+    size_t len = *(size_t *)p_len_and_key;
+    void *p_key = (size_t *)p_len_and_key + 1;
+    key = MurmurHash64A(p_key, len, qf->metadata->seed) % qf->metadata->range;
+  #endif
+  } else if (qf->metadata->hash_mode == INVERTIBLE)
+    key = hash_64(key, BITMASK(qf->metadata->key_bits));
+
+  uint64_t hash = (key << qf->metadata->value_bits) |
+                  (value & BITMASK(qf->metadata->value_bits));
+  if (count == 1)
+    return insert1(qf, hash);
+  else
+    return insert(qf, hash, count, qf->runtimedata->lock_mode);
+}
+
 bool qf_resize_malloc(QF *qf, uint64_t nslots)
 {
 	QF new_qf;
@@ -1788,7 +1828,7 @@ bool qf_resize_malloc(QF *qf, uint64_t nslots)
 		uint64_t key, value, count;
 		qfi_get(&qfi, &key, &value, &count);
 		qfi_next(&qfi);
-		if (!qf_insert(&new_qf, key, value, count)) {
+		if (!_qf_insert_internal(&new_qf, key, value, count)) {
 			fprintf(stderr, "Failed to insert key: %ld into the new CQF.\n", key);
 			abort();
 		}
@@ -1799,7 +1839,6 @@ bool qf_resize_malloc(QF *qf, uint64_t nslots)
 
 	return true;
 }
-
 uint64_t qf_resize(QF* qf, uint64_t nslots, void* buffer, uint64_t buffer_len)
 {
 	QF new_qf;
@@ -1828,7 +1867,7 @@ uint64_t qf_resize(QF* qf, uint64_t nslots, void* buffer, uint64_t buffer_len)
 		uint64_t key, value, count;
 		qfi_get(&qfi, &key, &value, &count);
 		qfi_next(&qfi);
-		if (!qf_insert(&new_qf, key, value, count)) {
+		if (!_qf_insert_internal(&new_qf, key, value, count)) {
 			fprintf(stderr, "Failed to insert key: %ld into the new CQF.\n", key);
 			abort();
 		}
@@ -2023,7 +2062,7 @@ bool qf_iterator(const QF *qf, QFi *qfi, uint64_t position)
 		uint64_t block_index = position;
 		uint64_t idx = bitselect(get_block(qf, block_index)->occupieds[0], 0);
 		if (idx == 64) {
-			while(idx == 64 && block_index < qf->metadata->nblocks) {
+			while(idx == 64 && block_index < qf->metadata->nblocks-1) {
 				block_index++;
 				idx = bitselect(get_block(qf, block_index)->occupieds[0], 0);
 			}
@@ -2237,12 +2276,12 @@ void qf_merge(const QF *qfa, const QF *qfb, QF *qfc)
 	qfi_get(&qfib, &keyb, &valueb, &countb);
 	do {
 		if (keya < keyb) {
-			qf_insert(qfc, keya, valuea, counta);
+			_qf_insert_internal(qfc, keya, valuea, counta);
 			qfi_next(&qfia);
 			qfi_get(&qfia, &keya, &valuea, &counta);
 		}
 		else {
-			qf_insert(qfc, keyb, valueb, countb);
+			_qf_insert_internal(qfc, keyb, valueb, countb);
 			qfi_next(&qfib);
 			qfi_get(&qfib, &keyb, &valueb, &countb);
 		}
@@ -2251,13 +2290,13 @@ void qf_merge(const QF *qfa, const QF *qfb, QF *qfc)
 	if (!qfi_end(&qfia)) {
 		do {
 			qfi_get(&qfia, &keya, &valuea, &counta);
-			qf_insert(qfc, keya, valuea, counta);
+			_qf_insert_internal(qfc, keya, valuea, counta);
 		} while(!qfi_next(&qfia));
 	}
 	if (!qfi_end(&qfib)) {
 		do {
 			qfi_get(&qfib, &keyb, &valueb, &countb);
-			qf_insert(qfc, keyb, valueb, countb);
+			_qf_insert_internal(qfc, keyb, valueb, countb);
 		} while(!qfi_next(&qfib));
 	}
 
@@ -2297,7 +2336,7 @@ void qf_multi_merge(const QF *qf_arr[], int nqf, QF *qfr)
 					smallest_key = keys[i]; smallest_idx = i;
 				}
 			}
-			qf_insert(qfr, keys[smallest_idx], values[smallest_idx], counts[smallest_idx]);
+			_qf_insert_internal(qfr, keys[smallest_idx], values[smallest_idx], counts[smallest_idx]);
 			qfi_next(&qfi_arr[smallest_idx]);
 			qfi_get(&qfi_arr[smallest_idx], &keys[smallest_idx], &values[smallest_idx],
 							&counts[smallest_idx]);
@@ -2314,7 +2353,7 @@ void qf_multi_merge(const QF *qf_arr[], int nqf, QF *qfr)
 		do {
 			uint64_t key, value, count;
 			qfi_get(&qfi_arr[0], &key, &value, &count);
-			qf_insert(qfr, key, value, count);
+			_qf_insert_internal(qfr, key, value, count);
 			qfi_next(&qfi_arr[0]);
 			iters++;
 		} while(!qfi_end(&qfi_arr[0]));
@@ -2378,7 +2417,7 @@ void qf_intersect(const QF *qfa, const QF *qfb, QF *qfr)
 		uint64_t key = 0, value = 0, count = 0;
 		qfi_get(&qfi, &key, &value, &count);
 		if (qf_count_key_value(qf_mem, key, 0) > 0)
-			qf_insert(qfr, key, value, count);
+			_qf_insert_internal(qfr, key, value, count);
 	} while (!qfi_next(&qfi));
 }
 
