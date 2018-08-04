@@ -140,13 +140,14 @@ test_main(int argc, const char *argv[]) {
         r = toku_pthread_join(query_tid[i], &ret); 
         assert_zero(r);
     }
-   clock_gettime(CLOCK_MONOTONIC, &end);
-   elapsed = (end.tv_sec - start.tv_sec) +
-            (end.tv_nsec - start.tv_nsec) / 1000000000.0;
-   printf("op, seq.or.rand, rows, time.s\n");
-   printf("query, random, %ld, %lf\n", random_numbers, elapsed);
-   toku_free(array);
-    r = toku_close_ft_handle_nolsn(t, 0); assert(r==0);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    elapsed = (end.tv_sec - start.tv_sec) +
+              (end.tv_nsec - start.tv_nsec) / 1000000000.0;
+    printf("op, seq.or.rand, rows, time.s\n");
+    printf("query, random, %ld, %lf\n", random_numbers, elapsed);
+    toku_free(array);
+    r = toku_close_ft_handle_nolsn(t, 0);
+    assert(r == 0);
     toku_cachetable_close(&ct);
     return 0;
 }
