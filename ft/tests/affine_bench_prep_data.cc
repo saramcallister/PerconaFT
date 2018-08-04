@@ -42,10 +42,12 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 static TOKUTXN const null_txn = 0;
 static size_t valsize = 4*1024; 
 static size_t keysize = 1024/8; //1k
-static size_t numrows = 16*1024*1024/5; 
+static const size_t numrows = 16*1024*1024/5; 
 static double epsilon = 0.5;  
 static size_t nodesize;
 static size_t basementsize;
+static size_t shuffled[numrows];
+ 
 static int uint64_dbt_cmp (DB *db, const DBT *a, const DBT *b) {
   assert(db && a && b);
   assert(a->size == sizeof(uint64_t)*keysize);
@@ -72,6 +74,17 @@ parse_args_for_nodesize (int argc, const char *argv[]) {
     return nodeMB;
 }
 
+static inline void
+shuffle_array() {
+	srand(time(NULL));
+	for(size_t i= numrows-1; i>0; i--) {
+		size_t j = rand()%(i+1);
+		//swap
+		size_t temp = shuffled[j];
+		shuffled[j] = shuffled[i];
+		shuffled[i] = temp;
+        }
+}
 int
 test_main(int argc, const char *argv[]) {
     //set up the node size and basement size for benchmarking
@@ -100,8 +113,14 @@ test_main(int argc, const char *argv[]) {
     DBT k, v;
     dbt_init(&k, key, keysize*8);
     dbt_init(&v, val, valsize);
+    
+    for(size_t i=0; i<numrows; i++) {
+       shuffled[i] = i;
+    }
+    shuffle_array();
+
     for (size_t i=0; i< numrows; i++) {
-    	key[0] = toku_htod64(i);
+    	key[0] = toku_htod64(shuffled[i]);
 	toku_ft_insert(t, &k, &v, null_txn);
     }
     CHECKPOINTER cp = toku_cachetable_get_checkpointer(ct);
