@@ -1745,6 +1745,7 @@ bool qf_free(QF *qf)
 	void *buffer = qf_destroy(qf);
 	if (buffer != NULL) {
 		free(buffer);
+		buffer = NULL;
 		return true;
 	}
 
@@ -2062,9 +2063,9 @@ bool qf_iterator(const QF *qf, QFi *qfi, uint64_t position)
 		uint64_t block_index = position;
 		uint64_t idx = bitselect(get_block(qf, block_index)->occupieds[0], 0);
 		if (idx == 64) {
-			while(idx == 64 && block_index < qf->metadata->nblocks-1) {
-				block_index++;
+			while(idx == 64 && block_index < qf->metadata->nblocks) {
 				idx = bitselect(get_block(qf, block_index)->occupieds[0], 0);
+				block_index++;
 			}
 		}
 		position = block_index * SLOTS_PER_BLOCK + idx;

@@ -379,13 +379,17 @@ public:
   void merge_bloom_filter_with(QF *another) {
     const uint64_t _qbits = 10;
     const uint64_t _nhashbits = _qbits + 8;
-    const uint64_t _nslots = (1ULL << _qbits);
+    //const uint64_t _nslots = (1ULL << _qbits);
     QF temp;
-    qf_malloc(&temp, _nslots, _nhashbits, 0, LOCKS_FORBIDDEN, INVERTIBLE, 0);
-    qf_set_auto_resize(&temp);
     QF *qf = &_header._filter;
+    
+    qf_malloc(&temp, qf->metadata->nslots, _nhashbits, 0, LOCKS_FORBIDDEN, INVERTIBLE, 0);
+    qf_set_auto_resize(&temp);
+
     qf_copy(&temp, qf);
+    qf_resize_malloc(qf, qf->metadata->nslots+another->metadata->nslots);
     qf_reset(qf);
+    qf_set_auto_resize(qf);
     qf_merge(&temp, another, qf);
   }
 };

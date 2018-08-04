@@ -3377,7 +3377,8 @@ ok: ;
         &keylen, 
         &idx
         );
-    if (r!=0) return r;
+    if (r!=0) 
+       return r;
 
     if (toku_ft_cursor_is_leaf_mode(ftcursor))
         goto got_a_good_value;        // leaf mode cursors see all leaf entries
@@ -3562,7 +3563,14 @@ unlock_ftnode_fun (void *v) {
         );
     assert_zero(r);
 }
-
+static bool is_search_pointed(ft_search *search) {
+  if (search->k &&search->compare ==
+          toku_ft_cursor_compare_set_range &&search->k_bound == nullptr) {
+    return true;
+  } else {
+    return false;
+  }
+}
 /* search in a node's child */
 static int
 ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *search, FT_GET_CALLBACK_FUNCTION getf, void *getf_v, bool *doprefetch, FT_CURSOR ftcursor, UNLOCKERS unlockers,
@@ -3570,7 +3578,7 @@ ft_search_child(FT_HANDLE ft_handle, FTNODE node, int childnum, ft_search *searc
 // Effect: Search in a node's child.  Searches are read-only now (at least as far as the hardcopy is concerned).
 {
     struct ancestors next_ancestors;
-    if(search->k && (!node->is_key_in_bloom_filter(search->k))) {
+    if(is_search_pointed(search) && (!node->is_key_in_bloom_filter(search->k))) {
         next_ancestors = {node, childnum, false, ancestors};
     } else {
         next_ancestors = {node, childnum, true, ancestors}; 
@@ -3954,7 +3962,8 @@ try_again:
         //callback.  It is surely wrong for node-level locking, and probably
         //wrong for the STRADDLE callback for heaviside function(two sets of key/vals)
         int r2 = getf(0,NULL, 0,NULL, getf_v, false);
-        if (r2!=0) r = r2;
+        if (r2!=0) 
+		r = r2;
     }
     {   // accounting (to detect and measure thrashing)
         uint retrycount = trycount - 1;         // how many retries were needed?

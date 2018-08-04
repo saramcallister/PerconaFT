@@ -1371,6 +1371,14 @@ setup_available_ftnode_partition(FTNODE node, int i) {
         set_BNC(node, i, toku_create_empty_nl());
     }
 }
+static bool is_search_pointed(ft_search *search) {
+  if (search->k &&search->compare ==
+          toku_ft_cursor_compare_set_range &&search->k_bound == nullptr) {
+    return true;
+  } else {
+    return false;
+  }
+}
 
 // Assign the child_to_read member of the bfe from the given ftnode
 // that has been brought into memory.
@@ -1388,7 +1396,7 @@ update_bfe_using_ftnode(FTNODE node, ftnode_fetch_extra *bfe)
             node,
             bfe->search
             );
-        if (node->height() > 0 && bfe->search->k &&
+        if (node->height() > 0 && is_search_pointed(bfe->search)&&
             !node->is_key_in_bloom_filter(bfe->search->k))
           // if (!bf_lookup(node, bfe->child_to_read, bfe->search->k))
           bfe->type = ftnode_fetch_none;
