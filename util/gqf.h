@@ -213,6 +213,7 @@ extern "C" {
 	/* Increment the counter for this key/value pair by count. */
 	bool qf_insert(QF *qf, uint64_t key, uint64_t value, uint64_t count);
 
+	bool _qf_insert_internal(QF *qf, uint64_t key, uint64_t value, uint64_t count);
 	/* Set the counter for this key/value pair to count. */
 	bool qf_set_count(QF *qf, uint64_t key, uint64_t value, uint64_t count);
 

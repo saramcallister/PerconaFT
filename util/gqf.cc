@@ -1781,7 +1781,7 @@ void qf_reset(QF *qf)
 #endif
 }
 
-static bool _qf_insert_internal(QF *qf, uint64_t key, uint64_t value, uint64_t count) {
+bool _qf_insert_internal(QF *qf, uint64_t key, uint64_t value, uint64_t count) {
   // We fill up the CQF up to 95% load factor.
   // This is a very conservative check.
   if (qf->metadata->noccupied_slots >= qf->metadata->xnslots * 0.95) {

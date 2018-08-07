@@ -377,13 +377,24 @@ public:
 
   void reset_bloom_filter() { qf_reset(&_header._filter); }
   void merge_bloom_filter_with(QF *another) {
-    const uint64_t _qbits = 10;
-    const uint64_t _nhashbits = _qbits + 8;
+    //const uint64_t _qbits = 10;
+    //const uint64_t _nhashbits = _qbits + 8;
     //const uint64_t _nslots = (1ULL << _qbits);
-    QF temp;
+    //QF temp;
     QF *qf = &_header._filter;
-    
-    qf_malloc(&temp, qf->metadata->nslots, _nhashbits, 0, LOCKS_FORBIDDEN, INVERTIBLE, 0);
+    if (another->metadata->nelts == 0)
+      return;
+
+    QFi qfi;
+    qf_iterator(another, &qfi, 0);
+    do {
+      uint64_t key, val, count;
+      qfi_get(&qfi, &key, &val, &count);
+      _qf_insert_internal(qf, key, val, count);
+      qfi_next(&qfi);
+    } while (!qfi_end(&qfi));
+#if 0    
+    qf_malloc(&temp, qf->metadata->nslots, _nhashbits, 0, LOCKS_FORBIDDEN, DEFAULT, 0);
     qf_set_auto_resize(&temp);
 
     qf_copy(&temp, qf);
@@ -391,6 +402,7 @@ public:
     qf_reset(qf);
     qf_set_auto_resize(qf);
     qf_merge(&temp, another, qf);
+#endif
   }
 };
 typedef struct ftnode *FTNODE;
