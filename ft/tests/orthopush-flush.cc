@@ -420,7 +420,6 @@ flush_to_internal(FT_HANDLE t) {
 }
 
 // flush from one internal node to another, where the child has 8 buffers
-#if 0
 static void
 flush_to_internal_multiple(FT_HANDLE t) {
     int r;
@@ -448,11 +447,12 @@ flush_to_internal_multiple(FT_HANDLE t) {
             childkeys[i] = NULL;
         }
     }
+    int total_size = 0;
 
     FTNODE XMALLOC(child);
-    BLOCKNUM blocknum = { 42 };
+    BLOCKNUM blocknum = { 49 };
     toku_initialize_empty_ftnode(child, blocknum, 1, 8, FT_LAYOUT_VERSION, 0);
-    int total_size = 0;
+
     for (i = 0; total_size < 128*1024; ++i) {
         total_size -= toku_bnc_memory_used(child_bncs[i%8]);
         insert_random_message(child, child_bncs[i%8], &child_messages[i], &child_messages_is_fresh[i], xids_123, i%8);
@@ -466,18 +466,16 @@ flush_to_internal_multiple(FT_HANDLE t) {
     int num_child_messages = i;
     
     FTNODE XMALLOC(parent);
-    BLOCKNUM pblocknum = { 41 };
+    BLOCKNUM pblocknum = { 43 };
     toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
-    destroy_nonleaf_childinfo(BNC(parent, 0));
     NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
+    destroy_nonleaf_childinfo(BNC(parent, 0));
     set_BNC(parent, 0, parent_bnc);
     BP_STATE(parent, 0) = PT_AVAIL;
-
     for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
         insert_random_message(parent, parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
     }
     int num_parent_messages = i;
-
 
     for (i = 0; i < 8; ++i) {
         destroy_nonleaf_childinfo(BNC(child, i));
@@ -488,31 +486,6 @@ flush_to_internal_multiple(FT_HANDLE t) {
         }
     }
 
-
-    for (i = 0; total_size < 128*1024; ++i) {
-        total_size -= toku_bnc_memory_used(child_bncs[i%8]);
-        insert_random_message(child, child_bncs[i%8], &child_messages[i], &child_messages_is_fresh[i], xids_123, i%8);
-        total_size += toku_bnc_memory_used(child_bncs[i%8]);
-        if (i % 8 < 7) {
-            if (childkeys[i%8] == NULL || dummy_cmp(child_messages[i]->kdbt(), childkeys[i%8]->kdbt()) > 0) {
-                childkeys[i%8] = child_messages[i];
-            }
-        }
-    }
-    int num_child_messages = i;
-
-    NONLEAF_CHILDINFO parent_bnc = toku_create_empty_nl();
-    FTNODE XMALLOC(parent);
-    BLOCKNUM pblocknum = { 41 };
-    toku_initialize_empty_ftnode(parent, pblocknum, 2, 1, FT_LAYOUT_VERSION, 0);
-    destroy_nonleaf_childinfo(BNC(parent, 0));
-    set_BNC(parent, 0, parent_bnc);
-    BP_STATE(parent, 0) = PT_AVAIL;
-
-    for (i = 0; toku_bnc_memory_used(parent_bnc) < 128*1024; ++i) {
-        insert_random_message(parent, parent_bnc, &parent_messages[i], &parent_messages_is_fresh[i], xids_234, 0);
-    }
-    int num_parent_messages = i;
     toku_bnc_flush_to_child(t->ft, parent_bnc, child, TXNID_NONE);
 
     int total_messages = 0;
@@ -603,14 +576,15 @@ flush_to_internal_multiple(FT_HANDLE t) {
         toku_free(child_messages[i]->vdbt()->data);
         delete child_messages[i];
     }
-    toku_ftnode_free(&parent);
+    //destroy_nonleaf_childinfo(parent_bnc);
     toku_ftnode_free(&child);
+    toku_ftnode_free(&parent);
     toku_free(parent_messages);
     toku_free(child_messages);
     toku_free(parent_messages_is_fresh);
     toku_free(child_messages_is_fresh);
 }
-#endif
+
 // flush from one internal node to a leaf node, which has 8 basement
 // nodes
 //
@@ -1269,6 +1243,12 @@ compare_apply_and_flush(FT_HANDLE t, bool make_leaf_up_to_date) {
         toku_free(key_pointers[i]);
         toku_free(child_messages[i]);
     }
+
+    for (i = 0; i < 8; ++i) {
+	BLB_LRD(child1, i) = 0;
+	BLB_LRD(child2, i) = 0;
+    }
+
     toku_ftnode_free(&child1);
     toku_ftnode_free(&child2);
     toku_free(parent_messages);
@@ -1332,9 +1312,9 @@ test_main (int argc, const char *argv[]) {
     for (int i = 0; i < 10; ++i) {
         flush_to_internal(t);
     }
-//    for (int i = 0; i < 10; ++i) {
- //       flush_to_internal_multiple(t);
- //   }
+    for (int i = 0; i < 10; ++i) {
+        flush_to_internal_multiple(t);
+    }
     for (int i = 0; i < 3; ++i) {
         flush_to_leaf(t, false, false);
         flush_to_leaf(t, false, true);
