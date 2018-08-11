@@ -179,8 +179,8 @@ uint64_t qf_deserialize(QF *qf, enum lockingmode lock, const char *filename)
 		exit(EXIT_FAILURE);
 	}
 	qf->metadata = (qfmetadata *)calloc(sizeof(qfmetadata), 1);
-	fread(qf->metadata, sizeof(qfmetadata), 1, fin);
-
+	int r = fread(qf->metadata, sizeof(qfmetadata), 1, fin);
+	(void)r;
 	qf->runtimedata->f_info.filepath = (char *)malloc(strlen(filename));
 	strcpy(qf->runtimedata->f_info.filepath, filename);
 	/* initlialize the locks in the QF */
@@ -191,7 +191,8 @@ uint64_t qf_deserialize(QF *qf, enum lockingmode lock, const char *filename)
 	qf->runtimedata->locks = (volatile int *)calloc(qf->runtimedata->num_locks,
 																					sizeof(volatile int));
 	qf->blocks = (qfblock *)calloc(qf->metadata->total_size_in_bytes, 1);
-	fread(qf->blocks, qf->metadata->total_size_in_bytes, 1, fin);
+	r = fread(qf->blocks, qf->metadata->total_size_in_bytes, 1, fin);
+	(void)r;
 	fclose(fin);
 
 	return sizeof(qfmetadata) + qf->metadata->total_size_in_bytes;

@@ -39,11 +39,11 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include <stdio.h>
 #include "cachetable/checkpoint.h"
 #include "test.h"
-#define NUM_WORKER 4
+#define NUM_WORKER 8
 static TOKUTXN const null_txn = 0;
 static size_t valsize = 4*1024; 
 static size_t keysize = 1024/8; //1k
-static const size_t numrows = 4*1024*1024/5; 
+static const size_t numrows = 8*1024*1024/5; 
 static double epsilon = 0.5;  
 static size_t nodesize;
 static size_t basementsize;
@@ -77,6 +77,8 @@ parse_args_for_nodesize (int argc, const char *argv[]) {
     return nodeMB;
 }
 
+typedef uint64_t __attribute__((__may_alias__)) uint64_t_a;
+
 static void * random_insert(void * arg) {
   char val[valsize];
   ZERO_ARRAY(val);
@@ -88,7 +90,7 @@ static void * random_insert(void * arg) {
   uint64_t * array = (uint64_t *) arg;
   for (size_t i = 0; i < numrows/NUM_WORKER; i++) {
     key[0] = toku_htod64(array[i]);
-    *((uint64_t *) val) = key [0];
+    *((uint64_t_a *) val) = key [0];
     toku_ft_insert(t, &k, &v, null_txn);
   }
   return arg;
@@ -115,7 +117,7 @@ int test_main(int argc, const char *argv[]) {
   basementsize = nodesize / fanout;
   printf("Benchmarking fractal tree based on nodesize = %zu bytes(%lfMBs) \n "
          "\t key: %zu bytes (%zu KBs); value: %zu bytes (%zu KBs) \n\t B = "
-         "%zu, epsilon=0.5, fanout = %d\n Preparing 4 GBs data...\n",
+         "%zu, epsilon=0.5, fanout = %d\n Preparing 8 GBs data...\n",
          nodesize, nodeMB, keysize * 8, (keysize * 8) / 1024, valsize,
          valsize / 1024, B, fanout);
 
@@ -123,7 +125,7 @@ int test_main(int argc, const char *argv[]) {
   const char *n = "affine_benchmark_data";
   int r;
   unlink(n);
-  toku_cachetable_create(&ct, 0, ZERO_LSN, nullptr);
+  toku_cachetable_create(&ct, 1024*1024*1024, ZERO_LSN, nullptr);
   r = toku_open_ft_handle(n, 1, &t, nodesize, basementsize, TOKU_NO_COMPRESSION,
                           ct, null_txn, uint64_dbt_cmp);
   assert(r == 0);

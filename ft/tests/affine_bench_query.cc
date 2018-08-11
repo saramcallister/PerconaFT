@@ -43,13 +43,14 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 static TOKUTXN const null_txn = 0;
 static size_t valsize = 4*1024;
 static size_t keysize = 1024/8;
-static size_t numrows = 4*1024*1024/5;
+static size_t numrows = 8*1024*1024/5;
 static double epsilon = 0.5;  
 static size_t nodesize;
 static size_t basementsize;
 static FT_HANDLE t;
 static CACHETABLE ct;
 static size_t random_numbers = numrows/(1024);
+typedef uint64_t __attribute__((__may_alias__)) uint64_t_a;
 static int uint64_dbt_cmp (DB *db, const DBT *a, const DBT *b) {
   assert(db && a && b);
   assert(a->size == sizeof(uint64_t)*keysize);
@@ -93,7 +94,7 @@ static void * random_query(void *arg) {
    uint64_t * array = (uint64_t *) arg;
    for(size_t i=0; i< random_numbers/NUM_QUERY_THREADS; i++) {
        key[0] = toku_htod64(array[i]);
-       *(uint64_t *)val = key[0];
+       *(uint64_t_a *)val = key[0];
        struct check_pair pair = {keysize*8, key, valsize, val, 0};
        r = toku_ft_lookup(t, toku_fill_dbt(&k, key, keysize*8), lookup_checkf, &pair); assert(r == 0);
    }
@@ -129,12 +130,13 @@ test_main(int argc, const char *argv[]) {
     
     char * n = does_file_exist(secondary_file_name)? secondary_file_name : default_file_name;		
 
-    printf("Benchmarking fractal tree based on nodesize = %zu bytes(%lfMBs) \n \t key: %zu bytes (%zu KBs); value: %zu bytes (%zu KBs) \n\t B = %zu, epsilon=0.5, fanout = %d\n Querying randomly over 16 GBs data file[%s]...\n", nodesize, nodeMB, keysize*8, (keysize*8)/1024, valsize, valsize/1024, B, fanout, n);
+    printf("Benchmarking fractal tree based on nodesize = %zu bytes(%lfMBs) \n \t key: %zu bytes (%zu KBs); value: %zu bytes (%zu KBs) \n\t B = %zu, epsilon=0.5, fanout = %d\n Querying randomly over 8 GBs data file[%s]...\n", nodesize, nodeMB, keysize*8, (keysize*8)/1024, valsize, valsize/1024, B, fanout, n);
 
     int r;
     toku_cachetable_create(&ct, 0, ZERO_LSN, nullptr);
     r = toku_open_ft_handle(n, 0, &t, nodesize, basementsize, TOKU_NO_COMPRESSION, ct, null_txn, uint64_dbt_cmp); assert(r==0);
     toku_ft_handle_set_fanout(t, fanout);
+    toku_ft_set_direct_io(true);
     uint64_t *array = (uint64_t *)toku_malloc(sizeof(uint64_t) * random_numbers);
     if (array == NULL) {
        fprintf(stderr, "Allocate memory failed\n");

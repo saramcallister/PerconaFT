@@ -697,7 +697,9 @@ static inline void shift_remainders(QF *qf, uint64_t start_index, uint64_t
 
 #else
 
-#define REMAINDER_WORD(qf, i) ((uint64_t *)&(get_block(qf, (i)/qf->metadata->bits_per_slot)->slots[8 * ((i) % qf->metadata->bits_per_slot)]))
+typedef uint64_t __attribute__((__may_alias__)) uint64_t_a;
+
+#define REMAINDER_WORD(qf, i) ((uint64_t_a *)&(get_block(qf, (i)/qf->metadata->bits_per_slot)->slots[8 * ((i) % qf->metadata->bits_per_slot)]))
 
 static inline void shift_remainders(QF *qf, const uint64_t start_index, const
 																		uint64_t empty_index)
