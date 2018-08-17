@@ -39,49 +39,10 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include <stdio.h>
 #include "cachetable/checkpoint.h"
 #include "test.h"
-#define NUM_QUERY_THREADS 1
-static TOKUTXN const null_txn = 0;
-static size_t valsize = 4*1024;
-static size_t keysize = 1024/8;
-static size_t numrows = 16*1024*1024/5;
-static double epsilon = 0.5;  
-static size_t nodesize;
-static size_t basementsize;
+#include "affine_test.h"
+
 static FT_HANDLE t;
 static CACHETABLE ct;
-static uint64_t random_numbers = 0;
-static int uint64_dbt_cmp (DB *db, const DBT *a, const DBT *b) {
-  assert(db && a && b);
-  assert(a->size == sizeof(uint64_t)*keysize);
-  assert(b->size == sizeof(uint64_t)*keysize);
-
-  uint64_t x = *(uint64_t *) a->data;
-  uint64_t y = *(uint64_t *) b->data;
-
-    if (x<y) return -1;
-    if (x>y) return 1;
-    return 0;
-}
-
-static inline double
-parse_args_for_nodesize (int argc, const char *argv[]) {
-    const char *progname=argv[0];
-    if(argc != 2) {
-	fprintf(stderr, "Usage:\n %s [nodesize.MBs]\n", progname);
-	exit(1);
-    }
-    argc--; argv++;
-    double nodeMB;
-    sscanf(argv[0], "%lf", &nodeMB);  
-    return nodeMB;
-}
-
-static void randomize(uint64_t *array) {
-  srand(42);
-  for (uint64_t i = 0; i < random_numbers; i++) {
-    array[i] = (random() << 32 | random()) % numrows;
-  }
-}
 
 static void * random_query(void *arg) {
    char val[valsize];
@@ -98,6 +59,7 @@ static void * random_query(void *arg) {
    }
    return arg;
 }
+
 int
 test_main(int argc, const char *argv[]) {
     struct timespec start, end;
@@ -110,10 +72,11 @@ test_main(int argc, const char *argv[]) {
     size_t B = nodesize /(keysize*8+valsize);
     int fanout = pow (B, epsilon);
     basementsize = nodesize/fanout;
+    calculate_numrows();
     random_numbers = 2*(4*1024*1024/(basementsize/1024));
     printf("Benchmarking fractal tree based on nodesize = %zu bytes(%lfMBs) \n \t key: %zu bytes (%zu KBs); value: %zu bytes (%zu KBs) \n\t B = %zu, epsilon=0.5, fanout = %d\n Warming up cache...\n", nodesize, nodeMB, keysize*8, (keysize*8)/1024, valsize, valsize/1024, B, fanout);
 
-    const char *n = "affine_benchmark_data_2.000000";
+    const char *n = "/mnt/db/affine_benchmark_data";
     int r;
     toku_cachetable_create(&ct, 0, ZERO_LSN, nullptr);
     r = toku_open_ft_handle(n, 0, &t, nodesize, basementsize, TOKU_NO_COMPRESSION, ct, null_txn, uint64_dbt_cmp); assert(r==0);
