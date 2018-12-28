@@ -29,6 +29,22 @@ static int uint64_dbt_cmp (DB *db, const DBT *a, const DBT *b) {
     return 0;
 }
 
+static inline void 
+shuffle(int *array, size_t n)
+{
+    if (n > 1) 
+    {
+        size_t i;
+        for (i = 0; i < n - 1; i++) 
+        {
+          size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
+          int t = array[j];
+          array[j] = array[i];
+          array[i] = t;
+        }
+    }
+}
+
 static inline double
 parse_args_for_nodesize (int argc, const char *argv[]) {
     const char *progname=argv[0];

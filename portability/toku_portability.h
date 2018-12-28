@@ -188,7 +188,7 @@ ssize_t  pwrite(int, const void *, size_t, off_t)   __attribute__((__deprecated_
 #endif
 #    ifndef DONT_DEPRECATE_MALLOC
 #     if defined(__FreeBSD__)
-extern void *malloc(size_t)                    __malloc_like __attribute__((__deprecated__));
+//extern void *malloc(size_t)                    __malloc_like __attribute__((__deprecated__));
 extern void free(void*)                        __attribute__((__deprecated__));
 extern void *realloc(void*, size_t)            __malloc_like __attribute__((__deprecated__));
 #     elif defined(__APPLE__)
@@ -196,7 +196,7 @@ extern void *malloc(size_t)                    __attribute__((__deprecated__));
 extern void free(void*)                        __attribute__((__deprecated__));
 extern void *realloc(void*, size_t)            __attribute__((__deprecated__));
 #     else
-extern void *malloc(size_t)                    __THROW __attribute__((__deprecated__));
+//extern void *malloc(size_t)                    __THROW __attribute__((__deprecated__));
 extern void free(void*)                        __THROW __attribute__((__deprecated__));
 extern void *realloc(void*, size_t)            __THROW __attribute__((__deprecated__));
 #     endif

@@ -42,22 +42,6 @@ Copyright (c) 2006, 2015, Percona and/or its affiliates. All rights reserved.
 #include "test.h"
 #include "affine_test.h"
 
-void 
-shuffle(int *array, size_t n)
-{
-    if (n > 1) 
-    {
-        size_t i;
-        for (i = 0; i < n - 1; i++) 
-        {
-          size_t j = i + rand() / (RAND_MAX / (n - i) + 1);
-          int t = array[j];
-          array[j] = array[i];
-          array[i] = t;
-        }
-    }
-}
-
 int
 test_main(int argc, const char *argv[]) {
     //set up the node size and basement size for benchmarking
@@ -90,11 +74,11 @@ test_main(int argc, const char *argv[]) {
     dbt_init(&v, val, valsize);
 
     // get numrows random keys
-    int *key_array = (int *)malloc(sizeof(int) * numrows)
+    int *key_array = (int *)malloc(sizeof(int) * numrows);
     for (size_t i=0; i< numrows; i++) {
         key_array[i] = (int) i;
     }
-    shuffle(key_array, num_rows);
+    shuffle(key_array, numrows);
 
     for (size_t i=0; i< numrows; i++) {
     	key[0] = toku_htod64(key_array[i]);
